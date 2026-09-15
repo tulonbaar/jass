@@ -1,5 +1,5 @@
 """
-Testy jednostkowe modułu WindowsSniffer i parsowania danych Zabbixa
+Unit tests for WindowsSniffer module and Zabbix telemetry parsing.
 """
 
 import json
@@ -63,12 +63,12 @@ class TestWindowsSniffer(unittest.TestCase):
             {"itemid": "3", "name": "Total memory", "key_": "vm.memory.size[total]", "lastvalue": "68719476736"},  # 64 GB
             {"itemid": "4", "name": "Used memory", "key_": "vm.memory.size[used]", "lastvalue": "34359738368"},   # 32 GB
             # Drives
-            {"itemid": "5", "name": "C: Total space", "key_": 'vfs.fs.size["C:",total]', "lastvalue": "214748364800"}, # 200 GB
-            {"itemid": "6", "name": "C: Used space", "key_": 'vfs.fs.size["C:",used]', "lastvalue": "107374182400"},  # 100 GB
-            {"itemid": "7", "name": "D: Total space", "key_": 'vfs.fs.size[D:,total]', "lastvalue": "1073741824000"},  # 1 TB
-            {"itemid": "8", "name": "D: Used space", "key_": 'vfs.fs.size[D:,used]', "lastvalue": "429496729600"},    # 400 GB
+            {"itemid": "5", "name": "C: Total space", "key_": 'vfs.fs.size["C:",total]', "lastvalue": "214748364800"},  # 200 GB
+            {"itemid": "6", "name": "C: Used space", "key_": 'vfs.fs.size["C:",used]', "lastvalue": "107374182400"},   # 100 GB
+            {"itemid": "7", "name": "D: Total space", "key_": 'vfs.fs.size[D:,total]', "lastvalue": "1073741824000"},   # 1 TB
+            {"itemid": "8", "name": "D: Used space", "key_": 'vfs.fs.size[D:,used]', "lastvalue": "429496729600"},     # 400 GB
             # Uptime
-            {"itemid": "9", "name": "System uptime", "key_": "system.uptime", "lastvalue": "864000"}, # 10 days
+            {"itemid": "9", "name": "System uptime", "key_": "system.uptime", "lastvalue": "864000"},  # 10 days
         ]
 
         metrics = self.sniffer.collect_metrics("10001", items=sample_items)
@@ -106,7 +106,7 @@ class TestWindowsSniffer(unittest.TestCase):
             {"itemid": "3", "name": "Active virtual machines", "key_": "hyperv.active_vms", "lastvalue": "2"},
         ]
 
-        hv_data = self.sniffer.collect_hyperv("10001", items=sample_items) if hasattr(self.sniffer, "collect_hyperv") else self.sniffer.collect_virtualization_data("10001", items=sample_items)
+        hv_data = self.sniffer.collect_virtualization_data("10001", items=sample_items)
         self.assertTrue(hv_data.is_hyperv_host)
         self.assertEqual(hv_data.virtual_machines_count, 2)
         vm_names = [v.vm_name for v in hv_data.guest_vms]
@@ -131,7 +131,7 @@ class TestWindowsSniffer(unittest.TestCase):
 
         sample_items = [
             {"itemid": "1", "name": "CPU", "key_": "system.cpu.util", "lastvalue": "5.2"},
-            {"itemid": "2", "name": "RAM Total", "key_": "vm.memory.size[total]", "lastvalue": "17179869184"}, # 16 GB
+            {"itemid": "2", "name": "RAM Total", "key_": "vm.memory.size[total]", "lastvalue": "17179869184"},  # 16 GB
             {"itemid": "3", "name": "NTDS Active Directory Service", "key_": "service.info[NTDS,state]", "lastvalue": "0"},
             {"itemid": "4", "name": "DNS Server Service", "key_": "service.info[DNS,state]", "lastvalue": "0"},
             {"itemid": "5", "name": "C: Drive Total", "key_": "vfs.fs.size[C:,total]", "lastvalue": "107374182400"},
@@ -149,7 +149,7 @@ class TestWindowsSniffer(unittest.TestCase):
         self.assertEqual(payload.host_name, "WIN-SRV-AD01")
         self.assertIn("Active Directory Domain Controller / DNS", payload.llm_context_hints.get("detected_signatures", []))
 
-        # Test serializacji do JSON i promptu
+        # Test JSON serialization and prompt creation
         json_output = payload.to_llm_json()
         parsed_json = json.loads(json_output)
         self.assertEqual(parsed_json["host_name"], "WIN-SRV-AD01")

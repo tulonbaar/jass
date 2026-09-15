@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pl" class="dark">
+<html lang="en" class="dark">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -58,13 +58,13 @@
             <!-- Connection Status Badge -->
             <div id="conn-badge" class="flex items-center space-x-2 text-xs bg-slate-900 border border-darkborder px-3 py-1.5 rounded-lg">
                 <span id="conn-indicator" class="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
-                <span id="conn-text" class="text-slate-300">Rozłączono</span>
+                <span id="conn-text" class="text-slate-300">Disconnected</span>
             </div>
 
             <!-- Settings Modal Button -->
             <button onclick="openSettingsModal()" class="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-darkborder rounded-lg transition flex items-center space-x-1.5">
                 <i class="fa-solid fa-gear text-slate-400"></i>
-                <span>Ustawienia Zabbix API</span>
+                <span>Zabbix API Settings</span>
             </button>
         </div>
     </header>
@@ -78,31 +78,31 @@
             <div class="p-4 border-b border-darkborder space-y-3">
                 <div class="relative">
                     <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
-                    <input type="text" id="host-search" oninput="filterHosts()" placeholder="Szukaj hosta (nazwa, IP)..." 
+                    <input type="text" id="host-search" oninput="filterHosts()" placeholder="Search host (name, IP)..." 
                         class="w-full bg-slate-900 border border-darkborder rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
                 </div>
 
                 <!-- Group Selector -->
                 <div>
-                    <label class="block text-[11px] font-medium text-slate-400 mb-1">Grupa Zabbix:</label>
+                    <label class="block text-[11px] font-medium text-slate-400 mb-1">Zabbix Host Group:</label>
                     <select id="group-select" onchange="loadHosts()" 
                         class="w-full bg-slate-900 border border-darkborder rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
-                        <option value="">-- Wszystkie grupy --</option>
+                        <option value="">-- All Groups --</option>
                     </select>
                 </div>
             </div>
 
             <!-- Host List Header -->
             <div class="px-4 py-2 bg-slate-900/40 border-b border-darkborder flex items-center justify-between text-xs text-slate-400">
-                <span>Dostępne Hosty (<span id="hosts-count">0</span>)</span>
-                <button onclick="loadHosts()" title="Odśwież listę" class="hover:text-brand-400 transition">
+                <span>Available Hosts (<span id="hosts-count">0</span>)</span>
+                <button onclick="loadHosts()" title="Refresh host list" class="hover:text-brand-400 transition">
                     <i class="fa-solid fa-rotate-right"></i>
                 </button>
             </div>
 
             <!-- Host List Items -->
             <div id="host-list" class="flex-1 overflow-y-auto divide-y divide-darkborder/40 p-2 space-y-1">
-                <div class="text-center text-xs text-slate-500 py-8">Ładowanie hostów...</div>
+                <div class="text-center text-xs text-slate-500 py-8">Loading hosts...</div>
             </div>
         </aside>
 
@@ -114,13 +114,13 @@
                 <div class="w-20 h-20 rounded-2xl bg-slate-800/80 border border-darkborder flex items-center justify-center text-brand-500 mb-4 shadow-xl">
                     <i class="fa-solid fa-server text-3xl"></i>
                 </div>
-                <h2 class="text-xl font-bold text-white mb-2">Wybierz serwer do przeprowadzenia analizy</h2>
+                <h2 class="text-xl font-bold text-white mb-2">Select a server to perform telemetry sniffing</h2>
                 <p class="text-slate-400 text-sm max-w-md mb-6">
-                    Wybierz maszynę z listy po lewej stronie, aby pobrać telemetrię, inwentarz, usługi, metryki Hyper-V oraz wygenerować wsad dla modelu LLM.
+                    Choose a host from the left sidebar to collect inventory, metrics, services, Hyper-V telemetry, and compile an LLM analysis payload.
                 </p>
                 <button onclick="openSettingsModal()" class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-lg shadow-lg shadow-brand-600/30 transition flex items-center space-x-2">
                     <i class="fa-solid fa-plug"></i>
-                    <span>Skonfiguruj połączenie Zabbix</span>
+                    <span>Configure Zabbix API</span>
                 </button>
             </div>
 
@@ -151,17 +151,17 @@
                         <div class="flex flex-wrap items-center gap-2.5">
                             <button onclick="triggerRemoteProbe()" id="btn-remote-probe" class="px-3.5 py-2 bg-purple-600/80 hover:bg-purple-600 text-white text-xs font-medium rounded-xl border border-purple-500/30 transition shadow-lg shadow-purple-600/20 flex items-center space-x-2">
                                 <i class="fa-solid fa-terminal"></i>
-                                <span>Sonda PowerShell (script.execute)</span>
+                                <span>PowerShell Probe (script.execute)</span>
                             </button>
 
                             <button onclick="rescanCurrentHost()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl border border-darkborder transition flex items-center space-x-2">
                                 <i class="fa-solid fa-arrows-rotate"></i>
-                                <span>Przeładuj Telemetrię</span>
+                                <span>Reload Telemetry</span>
                             </button>
 
                             <button onclick="saveAnalysisToDisk()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl border border-darkborder transition flex items-center space-x-2">
                                 <i class="fa-solid fa-floppy-disk"></i>
-                                <span>Zapisz JSON</span>
+                                <span>Save JSON</span>
                             </button>
 
                             <button onclick="switchTab('tab-llm')" class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-brand-500/30 transition flex items-center space-x-2">
@@ -187,7 +187,7 @@
 
                         <!-- RAM -->
                         <div class="bg-slate-900/60 border border-darkborder rounded-xl p-3.5">
-                            <span class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold block mb-1">RAM Pamięć</span>
+                            <span class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold block mb-1">RAM Memory</span>
                             <div class="flex items-baseline space-x-2">
                                 <span id="stat-ram-pct" class="text-xl font-bold text-white">--%</span>
                                 <span id="stat-ram-used" class="text-xs text-slate-400">-- / --</span>
@@ -199,10 +199,10 @@
 
                         <!-- Storage -->
                         <div class="bg-slate-900/60 border border-darkborder rounded-xl p-3.5">
-                            <span class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold block mb-1">Główny Dysk (C:)</span>
+                            <span class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold block mb-1">Primary Disk (C:)</span>
                             <div class="flex items-baseline space-x-2">
                                 <span id="stat-disk-pct" class="text-xl font-bold text-white">--%</span>
-                                <span id="stat-disk-free" class="text-xs text-slate-400">-- wolne</span>
+                                <span id="stat-disk-free" class="text-xs text-slate-400">-- free</span>
                             </div>
                             <div class="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
                                 <div id="stat-disk-bar" class="bg-amber-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
@@ -211,19 +211,19 @@
 
                         <!-- Services -->
                         <div class="bg-slate-900/60 border border-darkborder rounded-xl p-3.5">
-                            <span class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold block mb-1">Usługi Windows</span>
+                            <span class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold block mb-1">Windows Services</span>
                             <div class="flex items-baseline space-x-2">
                                 <span id="stat-services-val" class="text-xl font-bold text-emerald-400">0</span>
-                                <span class="text-xs text-slate-400">uruchomionych</span>
+                                <span class="text-xs text-slate-400">running</span>
                             </div>
-                            <span id="stat-services-sub" class="text-[10px] text-slate-500 mt-2 block">monitorowanych</span>
+                            <span id="stat-services-sub" class="text-[10px] text-slate-500 mt-2 block">monitored services</span>
                         </div>
 
                         <!-- Uptime -->
                         <div class="bg-slate-900/60 border border-darkborder rounded-xl p-3.5">
                             <span class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold block mb-1">Uptime</span>
                             <span id="stat-uptime-val" class="text-sm font-bold text-slate-200 block truncate">--</span>
-                            <span class="text-[10px] text-slate-500 mt-1 block">czas od restartu</span>
+                            <span class="text-[10px] text-slate-500 mt-1 block">time since reboot</span>
                         </div>
                     </div>
                 </div>
@@ -231,19 +231,19 @@
                 <!-- Navigation Tabs -->
                 <div class="border-b border-darkborder flex space-x-6 text-sm">
                     <button onclick="switchTab('tab-overview')" id="btn-tab-overview" class="pb-3 text-slate-400 hover:text-slate-200 transition tab-active">
-                        <i class="fa-solid fa-chart-pie mr-1.5"></i>Przegląd & Dyski
+                        <i class="fa-solid fa-chart-pie mr-1.5"></i>Overview & Disks
                     </button>
                     <button onclick="switchTab('tab-services')" id="btn-tab-services" class="pb-3 text-slate-400 hover:text-slate-200 transition">
-                        <i class="fa-solid fa-list-check mr-1.5"></i>Usługi Windows (<span id="badge-svc-count">0</span>)
+                        <i class="fa-solid fa-list-check mr-1.5"></i>Windows Services (<span id="badge-svc-count">0</span>)
                     </button>
                     <button onclick="switchTab('tab-hyperv')" id="btn-tab-hyperv" class="pb-3 text-slate-400 hover:text-slate-200 transition">
-                        <i class="fa-solid fa-cubes mr-1.5"></i>Hyper-V Telemetria (<span id="badge-vm-count">0</span>)
+                        <i class="fa-solid fa-cubes mr-1.5"></i>Hyper-V Telemetry (<span id="badge-vm-count">0</span>)
                     </button>
                     <button onclick="switchTab('tab-inventory')" id="btn-tab-inventory" class="pb-3 text-slate-400 hover:text-slate-200 transition">
-                        <i class="fa-solid fa-id-card mr-1.5"></i>Inwentarz & Tagi
+                        <i class="fa-solid fa-id-card mr-1.5"></i>Inventory & Tags
                     </button>
                     <button onclick="switchTab('tab-remote')" id="btn-tab-remote" class="pb-3 text-slate-400 hover:text-slate-200 transition">
-                        <i class="fa-solid fa-terminal mr-1.5"></i>Zdalna Sonda (Porty)
+                        <i class="fa-solid fa-terminal mr-1.5"></i>Remote Probe (Ports)
                     </button>
                     <button onclick="switchTab('tab-llm')" id="btn-tab-llm" class="pb-3 text-slate-400 hover:text-slate-200 transition font-bold text-brand-400">
                         <i class="fa-solid fa-brain mr-1.5"></i>LLM Studio
@@ -256,7 +256,7 @@
                     <div id="detected-roles-box" class="bg-emerald-950/30 border border-emerald-500/30 rounded-xl p-4">
                         <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center space-x-2 mb-2">
                             <i class="fa-solid fa-wand-magic-sparkles"></i>
-                            <span>Wykryte Sygnatury Ról & Aplikacji (Dla LLM)</span>
+                            <span>Detected Role Signatures (For LLM)</span>
                         </h4>
                         <div id="detected-roles-list" class="flex flex-wrap gap-2"></div>
                     </div>
@@ -265,7 +265,7 @@
                     <div class="bg-darkcard border border-darkborder rounded-xl p-5">
                         <h3 class="text-sm font-bold text-white mb-4 flex items-center space-x-2">
                             <i class="fa-solid fa-hard-drive text-amber-400"></i>
-                            <span>Pojemność i Zajętość Dysków / Wolumenów</span>
+                            <span>Storage Drives / Volumes Capacity</span>
                         </h3>
                         <div id="drives-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
                     </div>
@@ -276,14 +276,14 @@
                     <div class="bg-darkcard border border-darkborder rounded-xl p-4 flex items-center justify-between">
                         <div class="relative w-72">
                             <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
-                            <input type="text" id="svc-filter" oninput="filterServicesTable()" placeholder="Filtruj usługi..." 
+                            <input type="text" id="svc-filter" oninput="filterServicesTable()" placeholder="Filter services..." 
                                 class="w-full bg-slate-900 border border-darkborder rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
                         </div>
                         <div class="flex items-center space-x-2 text-xs text-slate-400">
                             <span>Status:</span>
-                            <button onclick="setServiceFilter('all')" class="px-2.5 py-1 bg-slate-800 rounded hover:bg-slate-700 text-white text-[11px]">Wszystkie</button>
-                            <button onclick="setServiceFilter('Running')" class="px-2.5 py-1 bg-emerald-900/50 text-emerald-300 border border-emerald-700 rounded text-[11px]">Uruchomione</button>
-                            <button onclick="setServiceFilter('Stopped')" class="px-2.5 py-1 bg-red-900/50 text-red-300 border border-red-700 rounded text-[11px]">Zatrzymane</button>
+                            <button onclick="setServiceFilter('all')" class="px-2.5 py-1 bg-slate-800 rounded hover:bg-slate-700 text-white text-[11px]">All</button>
+                            <button onclick="setServiceFilter('Running')" class="px-2.5 py-1 bg-emerald-900/50 text-emerald-300 border border-emerald-700 rounded text-[11px]">Running</button>
+                            <button onclick="setServiceFilter('Stopped')" class="px-2.5 py-1 bg-red-900/50 text-red-300 border border-red-700 rounded text-[11px]">Stopped</button>
                         </div>
                     </div>
 
@@ -291,11 +291,11 @@
                         <table class="w-full text-left text-xs">
                             <thead class="bg-slate-900 text-slate-400 border-b border-darkborder">
                                 <tr>
-                                    <th class="p-3">Nazwa Usługi</th>
-                                    <th class="p-3">Nazwa Wyświetlana</th>
-                                    <th class="p-3">Status</th>
-                                    <th class="p-3">Typ Uruchomienia</th>
-                                    <th class="p-3">Klucz Zabbix</th>
+                                    <th class="p-3">Service Name</th>
+                                    <th class="p-3">Display Name</th>
+                                    <th class="p-3">State</th>
+                                    <th class="p-3">Startup Type</th>
+                                    <th class="p-3">Zabbix Key</th>
                                 </tr>
                             </thead>
                             <tbody id="services-table-body" class="divide-y divide-darkborder/50 text-slate-300"></tbody>
@@ -306,13 +306,13 @@
                 <!-- Tab 3: Hyper-V -->
                 <div id="tab-hyperv" class="tab-pane hidden space-y-4">
                     <div id="hyperv-warning" class="bg-slate-800 border border-darkborder rounded-xl p-6 text-center text-slate-400">
-                        Brak aktywnych metryk Hyper-V dla tego hosta.
+                        No active Hyper-V telemetry detected for this host.
                     </div>
                     <div id="hyperv-content" class="hidden space-y-4">
                         <div class="bg-darkcard border border-darkborder rounded-xl p-5">
                             <h3 class="text-sm font-bold text-white mb-3 flex items-center space-x-2">
                                 <i class="fa-solid fa-server text-purple-400"></i>
-                                <span>Zwirtualizowane Maszyny Goście (Hyper-V Guest VMs)</span>
+                                <span>Virtual Machine Guests (Hyper-V Guest VMs)</span>
                             </h3>
                             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="hyperv-vms-grid"></div>
                         </div>
@@ -325,7 +325,7 @@
                         <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-3">
                             <h3 class="text-sm font-bold text-white mb-2 flex items-center space-x-2">
                                 <i class="fa-solid fa-microchip text-cyan-400"></i>
-                                <span>Informacje Sprzętowe i Systemowe</span>
+                                <span>Hardware & OS Details</span>
                             </h3>
                             <div class="text-xs space-y-2 text-slate-300" id="inv-hardware-list"></div>
                         </div>
@@ -333,7 +333,7 @@
                         <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-3">
                             <h3 class="text-sm font-bold text-white mb-2 flex items-center space-x-2">
                                 <i class="fa-solid fa-tags text-emerald-400"></i>
-                                <span>Tagi Hosta (Zabbix Tags)</span>
+                                <span>Host Tags (Zabbix Tags)</span>
                             </h3>
                             <div id="inv-tags-list" class="flex flex-wrap gap-2"></div>
                         </div>
@@ -346,15 +346,15 @@
                         <div class="flex items-center justify-between mb-4">
                             <h3 class="text-sm font-bold text-white flex items-center space-x-2">
                                 <i class="fa-solid fa-network-wired text-purple-400"></i>
-                                <span>Wyniki Zdalnego Wykonania (script.execute / PowerShell)</span>
+                                <span>Remote Execution Output (script.execute / PowerShell)</span>
                             </h3>
                             <button onclick="triggerRemoteProbe()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold">
-                                Wykonaj Sondę Teraz
+                                Run Probe Now
                             </button>
                         </div>
                         <div id="remote-probe-container" class="space-y-4">
                             <div class="bg-slate-950 font-mono text-xs text-emerald-400 p-4 rounded-xl border border-darkborder overflow-x-auto max-h-96" id="remote-probe-raw">
-                                Brak wyników zdalnej sondy. Uruchom sondę przyciskiem powyżej.
+                                No remote probe results yet. Execute a probe using the button above.
                             </div>
                         </div>
                     </div>
@@ -369,23 +369,23 @@
                                     <i class="fa-solid fa-sparkles text-brand-400"></i>
                                     <span>LLM Analysis Prompt Generator</span>
                                 </h3>
-                                <p class="text-xs text-slate-400">Skopiuj gotowy wsad telemetryczny i wklej do ChatGPT (GPT-4o), Claude 3.5 Sonnet lub lokalnego modelu Ollama.</p>
+                                <p class="text-xs text-slate-400">Copy the compiled telemetry prompt and paste into ChatGPT (GPT-4o), Claude 3.5 Sonnet, or a local Ollama model.</p>
                             </div>
                             <div class="flex items-center space-x-3">
                                 <button onclick="copyToClipboard('llm-user-prompt-text')" class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-brand-500/20 transition flex items-center space-x-2">
                                     <i class="fa-solid fa-copy"></i>
-                                    <span>Skopiuj Prompt do Schowka</span>
+                                    <span>Copy Prompt to Clipboard</span>
                                 </button>
                                 <button onclick="downloadFullJson()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl border border-darkborder transition flex items-center space-x-1.5">
                                     <i class="fa-solid fa-download"></i>
-                                    <span>Pobierz .JSON</span>
+                                    <span>Download .JSON</span>
                                 </button>
                             </div>
                         </div>
 
                         <!-- Prompt View -->
                         <div class="space-y-3">
-                            <label class="block text-xs font-semibold text-slate-300">Prompt dla Użytkownika (z osadzonym JSON):</label>
+                            <label class="block text-xs font-semibold text-slate-300">User Prompt (with embedded JSON payload):</label>
                             <div class="relative">
                                 <pre id="llm-user-prompt-text" class="bg-slate-950 font-mono text-xs text-slate-300 p-4 rounded-xl border border-darkborder max-h-96 overflow-y-auto whitespace-pre-wrap"></pre>
                             </div>
@@ -403,7 +403,7 @@
             <div class="flex items-center justify-between border-b border-darkborder pb-3">
                 <h3 class="text-base font-bold text-white flex items-center space-x-2">
                     <i class="fa-solid fa-server text-brand-500"></i>
-                    <span>Konfiguracja Zabbix API</span>
+                    <span>Zabbix API Configuration</span>
                 </h3>
                 <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white">
                     <i class="fa-solid fa-xmark"></i>
@@ -412,27 +412,27 @@
 
             <div class="space-y-3 text-xs">
                 <div>
-                    <label class="block text-slate-300 font-medium mb-1">Adres URL Zabbix API:</label>
+                    <label class="block text-slate-300 font-medium mb-1">Zabbix API URL:</label>
                     <input type="text" id="cfg-url" placeholder="http://zabbix.local/api_jsonrpc.php" 
                         class="w-full bg-slate-900 border border-darkborder rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-brand-500">
                 </div>
 
                 <div>
-                    <label class="block text-slate-300 font-medium mb-1">API Token (Zalecany dla Zabbix 6.0+):</label>
+                    <label class="block text-slate-300 font-medium mb-1">API Token (Recommended for Zabbix 6.0+):</label>
                     <input type="password" id="cfg-token" placeholder="Bearer Token..." 
                         class="w-full bg-slate-900 border border-darkborder rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-brand-500">
                 </div>
 
                 <div class="pt-2 border-t border-darkborder/50">
-                    <span class="text-slate-500 font-semibold block mb-2">Lub tradycyjne logowanie (Fallback user.login):</span>
+                    <span class="text-slate-500 font-semibold block mb-2">Or Legacy Authentication (Fallback user.login):</span>
                     <div class="grid grid-cols-2 gap-3">
                         <div>
-                            <label class="block text-slate-400 mb-1">Użytkownik:</label>
+                            <label class="block text-slate-400 mb-1">Username:</label>
                             <input type="text" id="cfg-user" placeholder="Admin" 
                                 class="w-full bg-slate-900 border border-darkborder rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-brand-500">
                         </div>
                         <div>
-                            <label class="block text-slate-400 mb-1">Hasło:</label>
+                            <label class="block text-slate-400 mb-1">Password:</label>
                             <input type="password" id="cfg-pass" placeholder="••••••••" 
                                 class="w-full bg-slate-900 border border-darkborder rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-brand-500">
                         </div>
@@ -441,17 +441,17 @@
 
                 <div class="flex items-center space-x-2 pt-2">
                     <input type="checkbox" id="cfg-verify-ssl" checked class="rounded bg-slate-900 border-darkborder text-brand-600 focus:ring-0">
-                    <label for="cfg-verify-ssl" class="text-slate-400">Weryfikuj certyfikat SSL (odznacz dla self-signed)</label>
+                    <label for="cfg-verify-ssl" class="text-slate-400">Verify SSL Certificate (uncheck for self-signed)</label>
                 </div>
             </div>
 
             <div id="cfg-status-msg" class="text-xs p-2.5 rounded-lg hidden"></div>
 
             <div class="flex items-center justify-end space-x-3 pt-3 border-t border-darkborder">
-                <button onclick="closeSettingsModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg">Anuluj</button>
+                <button onclick="closeSettingsModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg">Cancel</button>
                 <button onclick="saveAndConnectZabbix()" id="btn-save-conn" class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 shadow-lg shadow-brand-500/20">
                     <i class="fa-solid fa-plug"></i>
-                    <span>Połącz z Zabbix</span>
+                    <span>Connect to Zabbix</span>
                 </button>
             </div>
         </div>
@@ -460,7 +460,7 @@
     <!-- Notification Toast -->
     <div id="toast" class="fixed bottom-6 right-6 z-50 hidden px-4 py-3 rounded-xl bg-darkcard border border-brand-500/40 text-xs text-white shadow-2xl flex items-center space-x-3">
         <i id="toast-icon" class="fa-solid fa-circle-check text-brand-400 text-base"></i>
-        <span id="toast-msg">Powiadomienie</span>
+        <span id="toast-msg">Notification</span>
     </div>
 
     <!-- App JavaScript Logic -->
@@ -496,10 +496,10 @@
                 
                 if (data.connected) {
                     indicator.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400';
-                    text.innerHTML = `<span class="text-emerald-400 font-semibold">Połączono</span> (Zabbix v${data.zabbix_version || '6.x'})`;
+                    text.innerHTML = `<span class="text-emerald-400 font-semibold">Connected</span> (Zabbix v${data.zabbix_version || '6.x'})`;
                 } else {
                     indicator.className = 'w-2.5 h-2.5 rounded-full bg-amber-500';
-                    text.innerHTML = '<span class="text-amber-400">Brak aktywnego połączenia</span>';
+                    text.innerHTML = '<span class="text-amber-400">Disconnected / Not Configured</span>';
                 }
 
                 if (data.zabbix_url) document.getElementById('cfg-url').value = data.zabbix_url;
@@ -525,7 +525,7 @@
             const msgBox = document.getElementById('cfg-status-msg');
 
             msgBox.className = 'text-xs p-2.5 rounded-lg bg-blue-900/40 text-blue-300 border border-blue-700';
-            msgBox.innerText = 'Łączenie i testowanie uprawnień...';
+            msgBox.innerText = 'Connecting and verifying credentials...';
             msgBox.classList.remove('hidden');
 
             try {
@@ -547,11 +547,11 @@
                     }, 1000);
                 } else {
                     msgBox.className = 'text-xs p-2.5 rounded-lg bg-red-900/40 text-red-300 border border-red-700';
-                    msgBox.innerText = data.detail || 'Błąd połączenia z Zabbix API.';
+                    msgBox.innerText = data.detail || 'Zabbix API connection error.';
                 }
             } catch (e) {
                 msgBox.className = 'text-xs p-2.5 rounded-lg bg-red-900/40 text-red-300 border border-red-700';
-                msgBox.innerText = 'Błąd sieci: ' + e.message;
+                msgBox.innerText = 'Network error: ' + e.message;
             }
         }
 
@@ -561,7 +561,7 @@
                 if (!res.ok) return;
                 const data = await res.json();
                 const sel = document.getElementById('group-select');
-                sel.innerHTML = '<option value="">-- Wszystkie grupy --</option>';
+                sel.innerHTML = '<option value="">-- All Groups --</option>';
                 data.groups.forEach(g => {
                     const opt = document.createElement('option');
                     opt.value = g.groupid;
@@ -576,13 +576,13 @@
         async function loadHosts() {
             const group_id = document.getElementById('group-select').value;
             const listEl = document.getElementById('host-list');
-            listEl.innerHTML = '<div class="text-center text-xs text-slate-400 py-6"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Pobieranie hostów...</div>';
+            listEl.innerHTML = '<div class="text-center text-xs text-slate-400 py-6"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Fetching hosts...</div>';
 
             try {
                 const url = group_id ? `/api/hosts?group_id=${group_id}` : '/api/hosts';
                 const res = await fetch(url);
                 if (!res.ok) {
-                    listEl.innerHTML = '<div class="text-center text-xs text-red-400 py-6">Błąd pobierania hostów. Sprawdź połączenie z Zabbix API.</div>';
+                    listEl.innerHTML = '<div class="text-center text-xs text-red-400 py-6">Error retrieving hosts. Check Zabbix connection settings.</div>';
                     return;
                 }
                 const data = await res.json();
@@ -590,7 +590,7 @@
                 document.getElementById('hosts-count').innerText = allHosts.length;
                 renderHostsList(allHosts);
             } catch (e) {
-                listEl.innerHTML = `<div class="text-center text-xs text-red-400 py-6">Błąd: ${e.message}</div>`;
+                listEl.innerHTML = `<div class="text-center text-xs text-red-400 py-6">Error: ${e.message}</div>`;
             }
         }
 
@@ -599,12 +599,12 @@
             listEl.innerHTML = '';
 
             if (hosts.length === 0) {
-                listEl.innerHTML = '<div class="text-center text-xs text-slate-500 py-6">Brak hostów do wyświetlenia</div>';
+                listEl.innerHTML = '<div class="text-center text-xs text-slate-500 py-6">No hosts found</div>';
                 return;
             }
 
             hosts.forEach(h => {
-                const ips = (h.interfaces || []).map(i => i.ip).filter(Boolean).join(', ') || 'Brak IP';
+                const ips = (h.interfaces || []).map(i => i.ip).filter(Boolean).join(', ') || 'No IP';
                 const isMonitored = String(h.status) === '0';
                 
                 const item = document.createElement('div');
@@ -635,7 +635,7 @@
         }
 
         async function selectAndAnalyzeHost(hostIdentifier, runRemote = false) {
-            showToast(`Analizowanie hosta '${hostIdentifier}'...`);
+            showToast(`Sniffing host '${hostIdentifier}'...`);
             document.getElementById('empty-state').classList.add('hidden');
             document.getElementById('host-view').classList.remove('hidden');
 
@@ -648,16 +648,16 @@
 
                 if (!res.ok) {
                     const err = await res.json();
-                    showToast(`Błąd analizy: ${err.detail || 'Nieznany błąd'}`, true);
+                    showToast(`Analysis error: ${err.detail || 'Unknown error'}`, true);
                     return;
                 }
 
                 const data = await res.json();
                 currentPayload = data.payload;
                 renderHostDashboard(currentPayload, data.llm_prompt);
-                showToast(`Zakończono analizę hosta ${currentPayload.host_name}.`);
+                showToast(`Completed analysis for ${currentPayload.host_name}.`);
             } catch (e) {
-                showToast(`Błąd: ${e.message}`, true);
+                showToast(`Error: ${e.message}`, true);
             }
         }
 
@@ -700,7 +700,7 @@
             const cDrive = (p.metrics.drives || []).find(d => d.fs_name.startsWith('C')) || (p.metrics.drives || [])[0];
             if (cDrive) {
                 document.getElementById('stat-disk-pct').innerText = cDrive.used_percent !== null ? `${cDrive.used_percent}%` : 'N/A';
-                document.getElementById('stat-disk-free').innerText = `${cDrive.free_formatted || '?'} wolne`;
+                document.getElementById('stat-disk-free').innerText = `${cDrive.free_formatted || '?'} free`;
                 document.getElementById('stat-disk-bar').style.width = `${Math.min(cDrive.used_percent || 0, 100)}%`;
             } else {
                 document.getElementById('stat-disk-pct').innerText = 'N/A';
@@ -724,7 +724,7 @@
                     rolesContainer.appendChild(tag);
                 });
             } else {
-                rolesContainer.innerHTML = '<span class="text-xs text-slate-400">Brak jednoznacznych sygnatur (pełna analiza w LLM Studio).</span>';
+                rolesContainer.innerHTML = '<span class="text-xs text-slate-400">No definite single signature (full assessment in LLM Studio).</span>';
             }
 
             // Drives
@@ -744,8 +744,8 @@
                         <div class="${barColor} h-full rounded-full" style="width: ${Math.min(usedPct, 100)}%"></div>
                     </div>
                     <div class="flex justify-between text-[11px] text-slate-400 pt-1">
-                        <span>Zajęte: ${d.used_formatted || '?'}</span>
-                        <span>Łącznie: ${d.total_formatted || '?'}</span>
+                        <span>Used: ${d.used_formatted || '?'}</span>
+                        <span>Total: ${d.total_formatted || '?'}</span>
                     </div>
                 `;
                 drivesContainer.appendChild(card);
@@ -784,7 +784,7 @@
             const invList = document.getElementById('inv-hardware-list');
             invList.innerHTML = `
                 <div class="flex justify-between border-b border-darkborder/40 pb-1.5">
-                    <span class="text-slate-400">Sprzęt / Vendor:</span>
+                    <span class="text-slate-400">Hardware / Vendor:</span>
                     <span class="font-semibold text-slate-200">${p.inventory.hardware || p.inventory.vendor || 'N/A'}</span>
                 </div>
                 <div class="flex justify-between border-b border-darkborder/40 pb-1.5">
@@ -792,11 +792,11 @@
                     <span class="font-semibold text-slate-200">${p.inventory.model || 'N/A'}</span>
                 </div>
                 <div class="flex justify-between border-b border-darkborder/40 pb-1.5">
-                    <span class="text-slate-400">Numer Seryjny:</span>
+                    <span class="text-slate-400">Serial Number:</span>
                     <span class="font-semibold text-slate-200 font-mono">${p.inventory.serial_number || 'N/A'}</span>
                 </div>
                 <div class="flex justify-between border-b border-darkborder/40 pb-1.5">
-                    <span class="text-slate-400">Adresy MAC:</span>
+                    <span class="text-slate-400">MAC Addresses:</span>
                     <span class="font-semibold text-slate-200 font-mono">${(p.inventory.mac_addresses || []).join(', ') || 'N/A'}</span>
                 </div>
             `;
@@ -813,9 +813,9 @@
             // Remote Execution
             const remoteRaw = document.getElementById('remote-probe-raw');
             if (p.remote_execution) {
-                remoteRaw.innerText = p.remote_execution.raw_output || (p.remote_execution.success ? 'Wykonano pomyślnie (brak tekstu wyjściowego).' : `Błąd: ${p.remote_execution.error_message}`);
+                remoteRaw.innerText = p.remote_execution.raw_output || (p.remote_execution.success ? 'Executed successfully (no output string).' : `Error: ${p.remote_execution.error_message}`);
             } else {
-                remoteRaw.innerText = 'Brak uruchomionej zdalnej sondy. Kliknij "Wykonaj Sondę Teraz" lub uruchom w CLI z flagą --remote-probe.';
+                remoteRaw.innerText = 'No remote probe execution data. Run probe with the button above or CLI --remote-probe.';
             }
 
             // LLM Studio
@@ -833,7 +833,7 @@
             });
 
             if (filtered.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-500">Brak usług pasujących do filtra</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-500">No services matching filter</td></tr>';
                 return;
             }
 
@@ -879,9 +879,9 @@
         function copyToClipboard(elementId) {
             const text = document.getElementById(elementId).innerText;
             navigator.clipboard.writeText(text).then(() => {
-                showToast('Skopiowano prompt LLM do schowka!');
+                showToast('Copied LLM prompt to clipboard!');
             }).catch(err => {
-                showToast('Błąd kopiowania do schowka', true);
+                showToast('Clipboard copy error', true);
             });
         }
 
@@ -895,10 +895,10 @@
                 });
                 const data = await res.json();
                 if (data.success) {
-                    showToast(`Zapisano pomyślnie: ${data.file_path}`);
+                    showToast(`Saved successfully: ${data.file_path}`);
                 }
             } catch (e) {
-                showToast(`Błąd zapisu: ${e.message}`, true);
+                showToast(`Save error: ${e.message}`, true);
             }
         }
 
@@ -911,7 +911,7 @@
             document.body.appendChild(dlAnchor);
             dlAnchor.click();
             dlAnchor.remove();
-            showToast(`Pobieranie ${currentPayload.host_name}_analysis.json...`);
+            showToast(`Downloading ${currentPayload.host_name}_analysis.json...`);
         }
     </script>
 </body>

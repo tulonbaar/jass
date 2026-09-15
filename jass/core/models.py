@@ -1,6 +1,6 @@
 """
 JASS - Just Another System Sniffer
-Modele struktur danych zbieranych z monitorowanych systemów
+Data structure models for collected telemetry from monitored systems
 """
 
 from __future__ import annotations
@@ -11,24 +11,24 @@ from pydantic import BaseModel, Field
 
 
 class HostInterface(BaseModel):
-    """Informacje o interfejsie sieciowym/agentowym hosta."""
+    """Host network / agent interface information."""
     interfaceid: str
     ip: str
     dns: str
     port: str
     type: int  # 1: Agent, 2: SNMP, 3: IPMI, 4: JMX
-    main: int  # 1: domyślny, 0: pomocniczy
+    main: int  # 1: Default, 0: Secondary
     mac: Optional[str] = None
 
 
 class HostTag(BaseModel):
-    """Tag przypisany do hosta w Zabbixie."""
+    """Zabbix host tag."""
     tag: str
     value: str
 
 
 class HostInventory(BaseModel):
-    """Ustrukturyzowane dane inwentarzowe hosta (Zabbix Host Inventory)."""
+    """Structured inventory data (Zabbix Host Inventory)."""
     os: Optional[str] = None
     os_full: Optional[str] = None
     os_short: Optional[str] = None
@@ -46,8 +46,8 @@ class HostInventory(BaseModel):
 
 
 class DriveMetric(BaseModel):
-    """Zajętość i pojemność pojedynczego dysku/wolumenu."""
-    fs_name: str  # np. C:, D:
+    """Capacity and utilization metrics for a single storage drive/volume."""
+    fs_name: str  # e.g., C:, D:
     total_bytes: Optional[int] = None
     total_formatted: Optional[str] = None
     used_bytes: Optional[int] = None
@@ -59,7 +59,7 @@ class DriveMetric(BaseModel):
 
 
 class HostMetrics(BaseModel):
-    """Kluczowe metryki wydajnościowe i pojemnościowe hosta."""
+    """Key performance and capacity metrics of the host."""
     cpu_utilization_percent: Optional[float] = None
     cpu_cores: Optional[int] = None
     memory_total_bytes: Optional[int] = None
@@ -76,7 +76,7 @@ class HostMetrics(BaseModel):
 
 
 class WindowsService(BaseModel):
-    """Status monitorowanej usługi systemowej Windows."""
+    """Status of a monitored Windows system service."""
     name: str
     display_name: Optional[str] = None
     state: str  # Running, Stopped, Paused, Unknown
@@ -86,7 +86,7 @@ class WindowsService(BaseModel):
 
 
 class HyperVGuestVM(BaseModel):
-    """Informacje o maszynie wirtualnej uruchomionej na Hyper-V."""
+    """Information regarding a virtual machine guest running on Hyper-V."""
     vm_name: str
     state: str  # Running, Off, Saved, Paused, Unknown
     cpu_cores: Optional[int] = None
@@ -97,7 +97,7 @@ class HyperVGuestVM(BaseModel):
 
 
 class HyperVData(BaseModel):
-    """Dane telemetryczne Hyper-V zbierane z hosta."""
+    """Hyper-V telemetry data collected from host."""
     is_hyperv_host: bool = False
     hypervisor_version: Optional[str] = None
     virtual_machines_count: int = 0
@@ -106,7 +106,7 @@ class HyperVData(BaseModel):
 
 
 class RemoteExecutionResult(BaseModel):
-    """Wynik zdalnego wykonania skryptu przez Zabbix API (script.execute)."""
+    """Result of remote script execution via Zabbix API (script.execute)."""
     script_name: str
     command: Optional[str] = None
     executed_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -119,13 +119,13 @@ class RemoteExecutionResult(BaseModel):
 
 class HostAnalysisPayload(BaseModel):
     """
-    Kompletna struktura danych zebranych o hoście, sformatowana jako wsad dla LLM.
+    Complete structured data payload collected from a host, formatted as an LLM ingestion payload.
     """
     schema_version: str = "1.0.0"
     collector: str = "JASS - Just Another System Sniffer (Windows/Hyper-V Analyzer)"
     collected_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     
-    # Identyfikacja Hosta
+    # Host Identification
     host_id: str
     host_name: str
     visible_name: str
@@ -134,16 +134,16 @@ class HostAnalysisPayload(BaseModel):
     tags: List[HostTag] = Field(default_factory=list)
     interfaces: List[HostInterface] = Field(default_factory=list)
     
-    # Moduły danych
+    # Data Modules
     inventory: HostInventory = Field(default_factory=HostInventory)
     metrics: HostMetrics = Field(default_factory=HostMetrics)
     windows_services: List[WindowsService] = Field(default_factory=list)
     hyperv: HyperVData = Field(default_factory=HyperVData)
     remote_execution: Optional[RemoteExecutionResult] = None
     
-    # Podsumowanie dla LLM
+    # LLM Context Hints & Signatures
     llm_context_hints: Dict[str, Any] = Field(default_factory=dict)
 
     def to_llm_json(self, indent: int = 2) -> str:
-        """Zwraca czytelny, zagnieżdżony JSON gotowy do przekazania do LLM."""
+        """Returns a clean, nested JSON string ready for LLM consumption."""
         return self.model_dump_json(indent=indent)

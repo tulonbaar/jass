@@ -1,7 +1,7 @@
 """
 JASS - Just Another System Sniffer
-Zaawansowany framework telemetryczny dla Windows i Hyper-V integrujący się z Zabbix API
-pod kątem analizy przeznaczenia biznesowego przez modele LLM.
+Advanced telemetry framework for Windows and Hyper-V integrating with Zabbix API
+for automated infrastructure and business role analysis via LLMs.
 """
 
 __version__ = "1.0.0"

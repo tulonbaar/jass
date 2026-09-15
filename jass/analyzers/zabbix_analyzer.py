@@ -1,6 +1,6 @@
 """
 JASS - Just Another System Sniffer
-Główny orkiestrator i analizator ZabbixAnalyzer
+Main ZabbixAnalyzer orchestrator
 """
 
 from __future__ import annotations
@@ -21,8 +21,8 @@ logger = logging.getLogger("jass.analyzers.zabbix")
 
 class ZabbixAnalyzer:
     """
-    Główna klasa analityczna frameworka JASS.
-    Łączy komunikację z Zabbix API, moduły sniffingowe (Windows/Hyper-V) oraz eksport dla LLM.
+    Main analytical orchestrator for JASS.
+    Connects Zabbix API communication, sniffing modules (Windows/Hyper-V), and LLM export.
     """
 
     def __init__(
@@ -35,14 +35,14 @@ class ZabbixAnalyzer:
         verify_ssl: bool = True,
     ) -> None:
         """
-        Inicjalizacja ZabbixAnalyzer.
+        Initialize ZabbixAnalyzer.
 
-        :param url: URL instancji Zabbix (np. https://zabbix.corp.local)
-        :param api_token: API Token (zalecany)
-        :param username: Login użytkownika Zabbix (fallback)
-        :param password: Hasło użytkownika Zabbix (fallback)
-        :param timeout: Timeout zapytań HTTP
-        :param verify_ssl: Weryfikacja certyfikatów SSL
+        :param url: Zabbix instance URL (e.g. https://zabbix.corp.local)
+        :param api_token: API Token (recommended)
+        :param username: Zabbix username (fallback)
+        :param password: Zabbix password (fallback)
+        :param timeout: HTTP request timeout
+        :param verify_ssl: SSL certificate verification
         """
         self.client = ZabbixClient(
             url=url,
@@ -52,23 +52,23 @@ class ZabbixAnalyzer:
             timeout=timeout,
             verify_ssl=verify_ssl,
         )
-        # Rejestr modułów analizujących
+        # Sniffer modules registry
         self.windows_sniffer = WindowsSniffer(self.client)
         self._connected = False
 
     def connect(self) -> str:
-        """Nawiązuje połączenie z Zabbix API."""
+        """Establishes connection to Zabbix API."""
         version = self.client.connect()
         self._connected = True
         return version
 
     def list_hostgroups(self) -> List[Dict[str, Any]]:
         """
-        Pobiera listę grup hostów z Zabbix API (hostgroup.get).
+        Retrieves list of host groups from Zabbix API (`hostgroup.get`).
         """
         if not self._connected:
             self.connect()
-        logger.debug("Pobieranie listy grup hostów (hostgroup.get)...")
+        logger.debug("Retrieving host groups (hostgroup.get)...")
         res = self.client.call("hostgroup.get", {"output": ["groupid", "name"]})
         return sorted(res, key=lambda x: x.get("name", ""))
 
@@ -78,7 +78,7 @@ class ZabbixAnalyzer:
         search: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
-        Pobiera listę hostów z opcjonalnym filtrowaniem po grupie lub nazwie (host.get).
+        Retrieves list of hosts with optional filtering by group or search keyword (`host.get`).
         """
         if not self._connected:
             self.connect()
@@ -104,17 +104,16 @@ class ZabbixAnalyzer:
         script_name: Optional[str] = None,
     ) -> HostAnalysisPayload:
         """
-        Przeprowadza pełną analizę pojedynczego hosta.
+        Performs full telemetry analysis on a single host.
 
-        :param host_identifier: Nazwa techniczna hosta, widoczna nazwa lub hostid
-        :param run_remote_probe: Czy uruchomić zdalną sondę przez script.execute
-        :param script_name: Nazwa predefiniowanego skryptu w Zabbixie
-        :return: Ustrukturyzowany obiekt HostAnalysisPayload
+        :param host_identifier: Technical host name, visible name, or hostid
+        :param run_remote_probe: Whether to execute remote probe via script.execute
+        :param script_name: Name of predefined Zabbix script
+        :return: Structured HostAnalysisPayload object
         """
         if not self._connected:
             self.connect()
 
-        # Na ten moment używamy WindowsSniffer (z możliwością automatycznej detekcji OS w przyszłości)
         payload = self.windows_sniffer.analyze_host(
             host_identifier=host_identifier,
             run_remote_probe=run_remote_probe,
@@ -129,18 +128,17 @@ class ZabbixAnalyzer:
         script_name: Optional[str] = None,
     ) -> List[HostAnalysisPayload]:
         """
-        Przeprowadza analizę wszystkich hostów w wybranej grupie.
+        Performs telemetry analysis on all hosts in the specified host group.
 
-        :param group_identifier: Nazwa grupy lub groupid
-        :param run_remote_probe: Czy wykonywać zdalne sondy na każdym hoście
-        :param script_name: Nazwa skryptu
-        :return: Lista obiektów HostAnalysisPayload
+        :param group_identifier: Hostgroup name or groupid
+        :param run_remote_probe: Whether to execute remote probe on each host
+        :param script_name: Script name for remote probe
+        :return: List of HostAnalysisPayload objects
         """
         if not self._connected:
             self.connect()
 
-        logger.info(f"Wyszukiwanie grupy hostów '{group_identifier}'...")
-        # Wyszukanie grupy
+        logger.info(f"Searching for host group '{group_identifier}'...")
         group_params: Dict[str, Any] = {"output": ["groupid", "name"]}
         if group_identifier.isdigit():
             group_params["groupids"] = [group_identifier]
@@ -149,19 +147,19 @@ class ZabbixAnalyzer:
 
         groups = self.client.call("hostgroup.get", group_params)
         if not groups:
-            # Próba elastycznego wyszukania grupy
+            # Fuzzy match
             groups = self.client.call("hostgroup.get", {"output": ["groupid", "name"], "search": {"name": group_identifier}})
 
         if not groups:
-            raise ZabbixAPIException(f"Nie odnaleziono grupy hostów '{group_identifier}' w systemie Zabbix.")
+            raise ZabbixAPIException(f"Host group '{group_identifier}' not found in Zabbix.")
 
         group = groups[0]
         group_id = group["groupid"]
         group_name = group["name"]
-        logger.info(f"Odnaleziono grupę: {group_name} (ID: {group_id}). Pobieranie hostów...")
+        logger.info(f"Found group: {group_name} (ID: {group_id}). Fetching hosts...")
 
         hosts = self.list_hosts(group_ids=[group_id])
-        logger.info(f"Liczba hostów w grupie: {len(hosts)}")
+        logger.info(f"Number of hosts in group: {len(hosts)}")
 
         results: List[HostAnalysisPayload] = []
         for h in hosts:
@@ -170,23 +168,23 @@ class ZabbixAnalyzer:
                 payload = self.analyze_host(h_name, run_remote_probe=run_remote_probe, script_name=script_name)
                 results.append(payload)
             except Exception as e:
-                logger.error(f"Błąd podczas analizy hosta {h_name}: {e}")
+                logger.error(f"Error analyzing host {h_name}: {e}")
 
         return results
 
     @staticmethod
     def save_analysis_json(payload: HostAnalysisPayload, output_dir: Union[str, Path] = ".") -> str:
         """
-        Zapisuje ustrukturyzowany plik JSON jako [nazwa_hosta]_analysis.json.
+        Saves structured JSON file as [host_name]_analysis.json.
 
-        :param payload: Dane analizy hosta
-        :param output_dir: Katalog docelowy
-        :return: Ścieżka do zapisanego pliku
+        :param payload: Host analysis dataset
+        :param output_dir: Target output directory
+        :return: Absolute path to written file
         """
         out_path = Path(output_dir)
         out_path.mkdir(parents=True, exist_ok=True)
 
-        # Bezpieczna nazwa pliku (usunięcie znaków niedozwolonych)
+        # Sanitize filename
         safe_name = "".join(c for c in payload.host_name if c.isalnum() or c in ("-", "_", ".")).rstrip()
         if not safe_name:
             safe_name = f"host_{payload.host_id}"
@@ -198,11 +196,11 @@ class ZabbixAnalyzer:
         with open(full_path, "w", encoding="utf-8") as f:
             f.write(json_content)
 
-        logger.info(f"Zapisano plik analizy: {full_path.resolve()}")
+        logger.info(f"Saved analysis JSON: {full_path.resolve()}")
         return str(full_path.resolve())
 
     def save_group_analysis_json(self, payloads: List[HostAnalysisPayload], output_dir: Union[str, Path] = ".") -> List[str]:
-        """Zapisuje analizy dla całej grupy maszyn."""
+        """Saves analysis files for all hosts in a group."""
         saved_paths: List[str] = []
         for p in payloads:
             path = self.save_analysis_json(p, output_dir=output_dir)
@@ -211,11 +209,11 @@ class ZabbixAnalyzer:
 
     @staticmethod
     def generate_llm_prompt(payload: HostAnalysisPayload) -> str:
-        """Generuje gotowy prompt LLM dla danego hosta."""
+        """Generates ready-to-use LLM prompt for the given host."""
         return LLMPromptBuilder.build_user_prompt(payload)
 
     def close(self) -> None:
-        """Zamyka sesję klienta."""
+        """Closes client session."""
         if self._connected:
             self.client.logout()
             self._connected = False

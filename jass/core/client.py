@@ -16,7 +16,7 @@ logger = logging.getLogger("jass.core.client")
 
 
 class ZabbixAPIException(Exception):
-    """Baza dla wyjątków związanych z zapytaniami do Zabbix API."""
+    """Base exception for errors related to Zabbix API queries."""
 
     def __init__(self, message: str, code: Optional[int] = None, data: Optional[str] = None):
         super().__init__(message)
@@ -34,19 +34,19 @@ class ZabbixAPIException(Exception):
 
 
 class ZabbixAuthException(ZabbixAPIException):
-    """Wyjątek rzucany przy niepowodzeniu autentykacji."""
+    """Exception raised upon authentication failure."""
     pass
 
 
 class ZabbixClient:
     """
-    Zaawansowany klient JSON-RPC dla Zabbix API (kompatybilny z Zabbix 6.0+).
-    
-    Obsługuje:
-    - Autentykację za pomocą API Token (Bearer Token / auth token)
-    - Fallback na tradycyjne logowanie user/password (metoda user.login)
-    - Automatyczne ponawianie zapytań (Retry logic) i obsługę timeoutów
-    - Wsparcie dla self-signed certyfikatów SSL
+    Advanced JSON-RPC client for Zabbix API (compatible with Zabbix 6.0+).
+
+    Features:
+    - Authentication via API Token (Bearer Token / auth token)
+    - Fallback to traditional user/password authentication (`user.login` method)
+    - Automatic request retry logic and timeout handling
+    - Support for self-signed SSL certificates
     """
 
     def __init__(
@@ -60,15 +60,15 @@ class ZabbixClient:
         max_retries: int = 3,
     ) -> None:
         """
-        Inicjalizacja klienta Zabbix API.
+        Initialize Zabbix API client.
 
-        :param url: Bazowy adres URL instancji Zabbix (np. https://zabbix.local lub https://zabbix.local/api_jsonrpc.php)
-        :param api_token: API Token Zabbixa (Zabbix 5.4 / 6.0+)
-        :param username: Nazwa użytkownika (używana w przypadku braku tokena)
-        :param password: Hasło użytkownika (używane w przypadku braku tokena)
-        :param timeout: Czas oczekiwania na odpowiedź w sekundach
-        :param verify_ssl: Weryfikacja certyfikatu SSL serwera
-        :param max_retries: Maksymalna liczba prób ponowienia przy błędach sieciowych
+        :param url: Base URL of the Zabbix instance (e.g. https://zabbix.local or https://zabbix.local/api_jsonrpc.php)
+        :param api_token: Zabbix API Token (Zabbix 5.4 / 6.0+)
+        :param username: Username (used when API token is not provided)
+        :param password: Password (used when API token is not provided)
+        :param timeout: Request timeout in seconds
+        :param verify_ssl: Verify server SSL certificate
+        :param max_retries: Maximum number of retries upon network errors
         """
         self.raw_url = url.strip()
         self.api_url = self._normalize_api_url(self.raw_url)
@@ -95,7 +95,7 @@ class ZabbixClient:
 
     @staticmethod
     def _normalize_api_url(url: str) -> str:
-        """Normalizuje podany adres URL do pełnej ścieżki api_jsonrpc.php."""
+        """Normalizes the given URL to full api_jsonrpc.php endpoint."""
         parsed = urllib.parse.urlparse(url)
         if not parsed.scheme:
             url = f"http://{url}"
@@ -109,83 +109,83 @@ class ZabbixClient:
 
     @property
     def is_authenticated(self) -> bool:
-        """Zwraca True, jeśli klient posiada aktywny token autentykacji."""
+        """Returns True if the client holds an active auth token."""
         return bool(self.auth_token)
 
     def connect(self) -> str:
         """
-        Nawiązuje połączenie z Zabbix API, pobiera wersję serwera i przeprowadza autentykację.
-        
-        :return: Zwraca wersję Zabbix API (np. '6.4.12')
-        :raises ZabbixAuthException: Przy błędzie autentykacji
-        :raises ZabbixAPIException: Przy błędzie komunikacji z API
-        """
-        logger.info(f"Łączenie z Zabbix API pod adresem: {self.api_url}")
-        
-        # 1. Sprawdzenie wersji API (nie wymaga autoryzacji)
-        self._api_version = self.get_version()
-        logger.info(f"Wykryto Zabbix API w wersji: {self._api_version}")
+        Establishes connection to Zabbix API, retrieves server version, and authenticates.
 
-        # 2. Autoryzacja
+        :return: Zabbix API version string (e.g. '6.4.12')
+        :raises ZabbixAuthException: On authentication failure
+        :raises ZabbixAPIException: On API communication error
+        """
+        logger.info(f"Connecting to Zabbix API at: {self.api_url}")
+        
+        # 1. Check API version (does not require authentication)
+        self._api_version = self.get_version()
+        logger.info(f"Detected Zabbix API version: {self._api_version}")
+
+        # 2. Authentication
         if self.api_token:
-            logger.info("Używanie API Tokena do autoryzacji.")
+            logger.info("Using API Token for authentication.")
             self.auth_token = self.api_token
-            # Test tokena poprzez lekkie zapytanie
+            # Verify token with a lightweight call
             try:
                 self.call("user.get", {"output": ["userid", "username"]})
-                logger.info("Autoryzacja za pomocą API Tokena zakończona sukcesem.")
+                logger.info("Authentication via API Token successful.")
                 return self._api_version
             except ZabbixAPIException as exc:
-                logger.warning(f"Test API Tokena nie powiódł się ({exc}). Próba fallbacku...")
+                logger.warning(f"API Token validation failed ({exc}). Attempting fallback...")
                 if not (self.username and self.password):
-                    raise ZabbixAuthException(f"Nieprawidłowy API Token: {exc.message}")
+                    raise ZabbixAuthException(f"Invalid API Token: {exc.message}")
 
         if self.username and self.password:
-            logger.info(f"Przeprowadzanie logowania dla użytkownika '{self.username}' (user.login)...")
+            logger.info(f"Performing login for user '{self.username}' (user.login)...")
             self._login(self.username, self.password)
             return self._api_version
 
-        raise ZabbixAuthException("Brak wymaganych danych uwierzytelniających (wymagany API Token lub username/password).")
+        raise ZabbixAuthException("Missing credentials (either API Token or username/password required).")
 
     def get_version(self) -> str:
-        """Wywołuje metodę `apiinfo.version` w celu pobrania wersji Zabbix API."""
+        """Calls `apiinfo.version` method to retrieve Zabbix API version."""
         resp = self.call("apiinfo.version", {}, auth_required=False)
         if isinstance(resp, str):
             return resp
-        raise ZabbixAPIException(f"Nieoczekiwany format wersji API: {resp}")
+        raise ZabbixAPIException(f"Unexpected API version format: {resp}")
 
     def _login(self, username: str, password: str) -> str:
         """
-        Logowanie za pomocą metody `user.login`.
-        Kompatybilne z Zabbix 6.0+ (pole 'username') oraz starszymi wersjami (pole 'user').
+        Authenticates using `user.login` method.
+        Compatible with Zabbix 6.0+ ('username' field) and legacy versions ('user' field).
         """
         params_v6 = {"username": username, "password": password}
         try:
             token = self.call("user.login", params_v6, auth_required=False)
             self.auth_token = str(token)
-            logger.info("Zalogowano pomyślnie za pomocą user.login.")
+            logger.info("Logged in successfully using user.login.")
             return self.auth_token
         except ZabbixAPIException as e:
-            # Fallback dla starszych wersji parametrów
+            # Fallback for legacy parameter naming
             try:
                 params_legacy = {"user": username, "password": password}
                 token = self.call("user.login", params_legacy, auth_required=False)
                 self.auth_token = str(token)
-                logger.info("Zalogowano pomyślnie (legacy param: user).")
+                logger.info("Logged in successfully (legacy param: user).")
                 return self.auth_token
             except ZabbixAPIException:
-                raise ZabbixAuthException(f"Błąd logowania Zabbix user.login: {e.message}")
+                raise ZabbixAuthException(f"Zabbix user.login failed: {e.message}")
 
     def logout(self) -> bool:
-        """Wylogowanie sesji jeśli logowano się loginem/hasłem."""
+        """Logs out session if authenticated via username/password."""
         if self.auth_token and not self.api_token:
             try:
                 self.call("user.logout", {})
                 self.auth_token = None
-                logger.info("Wylogowano sesję Zabbix API.")
+                logger.info("Logged out Zabbix API session.")
                 return True
             except Exception as e:
-                logger.debug(f"Błąd podczas wylogowywania: {e}")
+                logger.debug(f"Error during logout: {e}")
         return False
 
     def call(
@@ -195,14 +195,14 @@ class ZabbixClient:
         auth_required: bool = True,
     ) -> Any:
         """
-        Wykonuje zapytanie JSON-RPC 2.0 do Zabbix API.
+        Executes a JSON-RPC 2.0 request against Zabbix API.
 
-        :param method: Nazwa metody Zabbix API (np. host.get, item.get)
-        :param params: Parametry przekazywane do metody
-        :param auth_required: Czy zapytanie wymaga autoryzacji
-        :return: Wynik z pola 'result' odpowiedzi JSON-RPC
-        :raises ZabbixAuthException: Przy problemach z uprawnieniami/sesją
-        :raises ZabbixAPIException: Przy błędach zwróconych przez Zabbixa lub HTTP
+        :param method: Zabbix API method name (e.g. host.get, item.get)
+        :param params: Parameters dictionary or list
+        :param auth_required: Whether the method requires authentication
+        :return: Result from the 'result' field of the JSON-RPC response
+        :raises ZabbixAuthException: On permission or session issues
+        :raises ZabbixAPIException: On errors returned by Zabbix or HTTP transport
         """
         self._req_id += 1
         if params is None:
@@ -220,16 +220,16 @@ class ZabbixClient:
             "User-Agent": "JASS-JustAnotherSystemSniffer/1.0",
         }
 
-        # W Zabbix 6.0+ token może być w polu "auth" lub nagłówku Bearer
+        # In Zabbix 6.0+, token can be in "auth" payload field or Bearer header
         if auth_required:
             if not self.auth_token:
-                raise ZabbixAuthException("Brak aktywnego tokena autoryzacji dla zapytania wymagającego uwierzytelnienia.")
+                raise ZabbixAuthException("No active auth token for authenticated method call.")
             payload["auth"] = self.auth_token
             headers["Authorization"] = f"Bearer {self.auth_token}"
         else:
             payload["auth"] = None
 
-        logger.debug(f"Wysyłanie zapytania JSON-RPC: method={method}, id={self._req_id}")
+        logger.debug(f"Sending JSON-RPC request: method={method}, id={self._req_id}")
 
         try:
             response = self.session.post(
@@ -242,30 +242,30 @@ class ZabbixClient:
             response.raise_for_status()
             data = response.json()
         except requests.exceptions.Timeout:
-            logger.error(f"Timeout podczas wywołania metody {method} po {self.timeout}s.")
-            raise ZabbixAPIException(f"Przekroczono limit czasu połączenia ({self.timeout}s) dla {method}")
+            logger.error(f"Timeout calling method {method} after {self.timeout}s.")
+            raise ZabbixAPIException(f"Connection timeout ({self.timeout}s) for {method}")
         except requests.exceptions.SSLError as ssl_err:
-            logger.error(f"Błąd weryfikacji SSL: {ssl_err}")
-            raise ZabbixAPIException(f"Błąd certyfikatu SSL podczas łączenia z {self.api_url}: {ssl_err}")
+            logger.error(f"SSL certificate verification error: {ssl_err}")
+            raise ZabbixAPIException(f"SSL error connecting to {self.api_url}: {ssl_err}")
         except requests.exceptions.RequestException as req_err:
-            logger.error(f"Błąd HTTP/sieci podczas wywołania {method}: {req_err}")
-            raise ZabbixAPIException(f"Błąd połączenia z Zabbix API: {req_err}")
+            logger.error(f"HTTP/Network error calling {method}: {req_err}")
+            raise ZabbixAPIException(f"Network error connecting to Zabbix API: {req_err}")
         except ValueError as json_err:
-            logger.error(f"Błąd parsowania JSON z odpowiedzi Zabbix API: {json_err}")
-            raise ZabbixAPIException("Odpowiedź serwera nie jest poprawnym obiektem JSON.")
+            logger.error(f"JSON parsing error from Zabbix response: {json_err}")
+            raise ZabbixAPIException("Server response is not valid JSON.")
 
         if "error" in data:
             err_obj = data["error"]
-            err_msg = err_obj.get("message", "Nieznany błąd Zabbix API")
+            err_msg = err_obj.get("message", "Unknown Zabbix API error")
             err_data = err_obj.get("data", "")
             err_code = err_obj.get("code")
-            logger.error(f"Zabbix API zwrócił błąd: {err_msg} - {err_data} (kod {err_code})")
+            logger.error(f"Zabbix API error: {err_msg} - {err_data} (code {err_code})")
             if "Session terminated" in err_data or "Not authorized" in err_msg:
                 raise ZabbixAuthException(err_msg, code=err_code, data=err_data)
             raise ZabbixAPIException(err_msg, code=err_code, data=err_data)
 
         if "result" not in data:
-            raise ZabbixAPIException("Brak pola 'result' w odpowiedzi JSON-RPC.")
+            raise ZabbixAPIException("Missing 'result' field in JSON-RPC response.")
 
         return data["result"]
 

@@ -1,6 +1,6 @@
 """
 JASS - Just Another System Sniffer
-Generator promptów dla modeli LLM (OpenAI, Claude, Ollama, DeepSeek itp.)
+Prompt generator for LLM models (OpenAI, Claude, Ollama, DeepSeek, etc.)
 """
 
 from __future__ import annotations
@@ -12,41 +12,41 @@ from jass.core.models import HostAnalysisPayload
 
 class LLMPromptBuilder:
     """
-    Kompilator promptów dla modeli językowych (LLM).
-    Formułuje precyzyjny kontekst i instrukcje dla LLM w celu analizy roli biznesowej hosta.
+    Prompt compiler for Large Language Models (LLMs).
+    Formulates precise context and instructions for LLMs to analyze the business purpose of a host.
     """
 
-    SYSTEM_PROMPT = """Jesteś Senior Enterprise Architectem i ekspertem ds. infrastruktury Windows Server / Hyper-V.
-Twoim zadaniem jest przeanalizowanie ustrukturyzowanych danych telemetrycznych i inwentarzowych pochodzących z systemu Zabbix (JASS Telemetry Payload) dla monitorowanego serwera.
+    SYSTEM_PROMPT = """You are a Senior Enterprise Infrastructure Architect and an expert in Windows Server / Hyper-V ecosystems.
+Your task is to analyze structured telemetry and inventory data originating from a Zabbix monitoring system (JASS Telemetry Payload) for a target server.
 
-Na podstawie przekazanych metryk, zainstalowanych/uruchomionych usług Windows, dysków, ról Hyper-V, otwartych portów oraz danych inwentaryzacyjnych przygotuj wyczerpujący raport w języku polskim w formacie Markdown zawierający:
+Based on the provided metrics, running/installed Windows services, storage drives, Hyper-V roles, listening ports, and host inventory, generate a comprehensive Markdown report covering:
 
-1. 🎯 **Główna rola i przeznaczenie biznesowe serwera** (np. Active Directory Domain Controller, MS SQL Server Database Engine, Hyper-V Hypervisor Cluster Node, IIS Web Application Server, File/Print Server, Exchange/Mail, ERP/CRM backend, Backup Repository itp.).
-2. 🧩 **Wykryty stos technologiczny i kluczowe komponenty** (wykryte aplikacje, bazy danych, technologie, wersje).
-3. ⚡ **Ocena obciążenia i alokacji zasobów (Capacity & Sizing)** (CPU, RAM, przestrzeń dyskowa, czy maszyna jest przeciążona czy przewymiarowana).
-4. 🛡️ **Wnioski dotyczące bezpieczeństwa i konfiguracji** (nasłuchujące porty, wersja OS, potencjalne ryzyka, usługi działające w tle).
-5. 💡 **Rekomendacje architektoniczne i operacyjne** (np. sugerowane optymalizacje, planowane migracje, backupy).
+1. 🎯 **Primary Business Role and Purpose** (e.g., Active Directory Domain Controller, MS SQL Server Database Engine, Hyper-V Hypervisor Cluster Node, IIS Web Application Server, File/Print Server, Exchange Mail Server, ERP/CRM backend, Backup Repository, etc.).
+2. 🧩 **Detected Technology Stack & Key Components** (detected software, database engines, frameworks, versions).
+3. ⚡ **Resource Capacity & Sizing Assessment** (CPU, RAM, storage capacity, evaluating whether the machine is under stress or oversized).
+4. 🛡️ **Security, Configuration & Exposure Insights** (listening network ports, OS lifecycle status, potential misconfigurations, unexpected background services).
+5. 💡 **Architectural & Operational Recommendations** (suggested optimizations, maintenance, migration or backup improvements).
 """
 
     @classmethod
     def build_user_prompt(cls, payload: HostAnalysisPayload) -> str:
-        """Buduje prompt dla użytkownika zawierający JSON z danymi hosta."""
+        """Constructs the user prompt containing the host telemetry JSON."""
         json_data = payload.to_llm_json(indent=2)
         
-        prompt = f"""Poniżej znajdują się ustrukturyzowane dane telemetryczne z systemu Zabbix dla hosta **{payload.host_name}** ({payload.visible_name}):
+        prompt = f"""Below is the structured Zabbix telemetry data for host **{payload.host_name}** ({payload.visible_name}):
 
 ```json
 {json_data}
 ```
 
-Dokonaj szczegółowej analizy przeznaczenia biznesowego tego serwera, jego obciążenia, zainstalowanych aplikacji i rekomendacji. Odpowiedz zgodnie z wytycznymi systemowymi.
+Perform a comprehensive assessment of this server's business role, workload sizing, installed applications, and operational recommendations. Respond adhering to the system guidelines.
 """
         return prompt
 
     @classmethod
     def build_full_payload_for_api(cls, payload: HostAnalysisPayload, model: str = "gpt-4o") -> Dict[str, Any]:
         """
-        Generuje standardowy payload zgodny z formatem Chat Completions API (OpenAI / Anthropic / Ollama).
+        Generates standard payload compatible with Chat Completions API (OpenAI / Anthropic / Ollama).
         """
         return {
             "model": model,

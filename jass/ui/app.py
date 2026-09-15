@@ -37,7 +37,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Globalne repozytorium sesji i cache analizowanych danych
+# Global session state and cache
 state: Dict[str, Any] = {
     "analyzer": None,
     "zabbix_url": os.getenv("ZABBIX_URL", ""),
@@ -70,12 +70,12 @@ class SavePayloadRequest(BaseModel):
 
 
 def get_or_create_analyzer() -> ZabbixAnalyzer:
-    """Zwraca aktywną instancję ZabbixAnalyzer lub tworzy nową na podstawie stanu."""
+    """Returns active ZabbixAnalyzer instance or creates a new one from state."""
     if state["analyzer"] is not None:
         return state["analyzer"]
 
     if not state["zabbix_url"]:
-        raise HTTPException(status_code=400, detail="Brak skonfigurowanego adresu URL Zabbix.")
+        raise HTTPException(status_code=400, detail="Zabbix URL not configured.")
 
     try:
         analyzer = ZabbixAnalyzer(
@@ -91,12 +91,12 @@ def get_or_create_analyzer() -> ZabbixAnalyzer:
     except (ZabbixAuthException, ZabbixAPIException) as err:
         raise HTTPException(status_code=401, detail=str(err))
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Błąd inicjalizacji klienta Zabbix: {exc}")
+        raise HTTPException(status_code=500, detail=f"Zabbix client initialization error: {exc}")
 
 
 @app.get("/api/status")
 async def api_status():
-    """Zwraca status połączenia z Zabbix API."""
+    """Returns Zabbix API connection status."""
     connected = False
     version = None
     error = None
@@ -127,7 +127,7 @@ async def api_status():
 
 @app.post("/api/connect")
 async def api_connect(req: ConnectRequest):
-    """Konfiguruje i testuje połączenie z Zabbix API."""
+    """Configures and tests Zabbix API connection."""
     state["zabbix_url"] = req.url
     state["api_token"] = req.token or ""
     state["username"] = req.username or ""
@@ -140,7 +140,7 @@ async def api_connect(req: ConnectRequest):
         version = analyzer.client.get_version()
         return {
             "success": True,
-            "message": f"Połączono pomyślnie z Zabbix API (wersja {version}).",
+            "message": f"Connected successfully to Zabbix API (version {version}).",
             "version": version,
         }
     except Exception as e:
@@ -149,7 +149,7 @@ async def api_connect(req: ConnectRequest):
 
 @app.get("/api/groups")
 async def api_groups():
-    """Pobiera listę grup hostów."""
+    """Retrieves list of host groups."""
     analyzer = get_or_create_analyzer()
     try:
         groups = analyzer.list_hostgroups()
@@ -160,7 +160,7 @@ async def api_groups():
 
 @app.get("/api/hosts")
 async def api_hosts(group_id: Optional[str] = None, search: Optional[str] = None):
-    """Pobiera listę hostów."""
+    """Retrieves list of hosts."""
     analyzer = get_or_create_analyzer()
     try:
         group_ids = [group_id] if group_id else None
@@ -172,7 +172,7 @@ async def api_hosts(group_id: Optional[str] = None, search: Optional[str] = None
 
 @app.post("/api/analyze/host")
 async def api_analyze_host(req: AnalyzeHostRequest):
-    """Wykonuje badanie wybranego hosta i zwraca payload JSON."""
+    """Performs host telemetry analysis and returns JSON payload."""
     analyzer = get_or_create_analyzer()
     try:
         payload = analyzer.analyze_host(
@@ -190,13 +190,13 @@ async def api_analyze_host(req: AnalyzeHostRequest):
             "system_prompt": LLMPromptBuilder.SYSTEM_PROMPT,
         }
     except Exception as e:
-        logger.exception("Błąd podczas analizy hosta:")
+        logger.exception("Error during host analysis:")
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.post("/api/save")
 async def api_save_payload(req: SavePayloadRequest):
-    """Zapisuje payload analizy jako [nazwa_hosta]_analysis.json."""
+    """Saves analysis payload as [host_name]_analysis.json."""
     try:
         pydantic_payload = HostAnalysisPayload(**req.payload)
         saved_file = ZabbixAnalyzer.save_analysis_json(pydantic_payload, output_dir=req.output_dir or ".")
@@ -207,7 +207,7 @@ async def api_save_payload(req: SavePayloadRequest):
 
 @app.get("/", response_class=HTMLResponse)
 async def get_index():
-    """Serwuje główny interfejs Web Dashboard."""
+    """Serves the main Web Dashboard interface."""
     template_path = Path(__file__).parent / "templates" / "index.html"
     if template_path.exists():
         return HTMLResponse(content=template_path.read_text(encoding="utf-8"))
@@ -223,7 +223,7 @@ def start_ui_server(
     default_password: Optional[str] = None,
     verify_ssl: bool = True,
 ) -> None:
-    """Uruchamia serwer Uvicorn z aplikacją JASS Web UI."""
+    """Starts Uvicorn server hosting JASS Web Dashboard."""
     if default_url:
         state["zabbix_url"] = default_url
     if default_token:

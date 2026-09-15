@@ -1,6 +1,6 @@
 """
 JASS - Just Another System Sniffer
-Interfejs wiersza poleceń (CLI)
+Command Line Interface (CLI)
 """
 
 from __future__ import annotations
@@ -27,7 +27,7 @@ console = Console()
 
 
 def setup_logging(verbose: bool = False) -> None:
-    """Konfiguracja formatowania logów za pomocą Rich."""
+    """Configure Rich logging handler."""
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
         level=level,
@@ -38,7 +38,7 @@ def setup_logging(verbose: bool = False) -> None:
 
 
 def print_banner() -> None:
-    """Wyświetla nagłówek powitalny JASS."""
+    """Displays the JASS welcome banner."""
     banner = """[bold cyan]
      ██╗ █████╗ ███████╗███████╗
      ██║██╔══██╗██╔════╝██╔════╝
@@ -53,20 +53,20 @@ def print_banner() -> None:
 
 
 def display_host_summary(payload: HostAnalysisPayload) -> None:
-    """Wyświetla estetyczne podsumowanie zebranych danych w konsoli."""
-    # Tabela Główna
+    """Renders an aesthetic summary table of collected telemetry in console."""
     grid = Table(box=box.ROUNDED, show_header=True, header_style="bold magenta", title=f"🎯 Host: {payload.host_name} ({payload.visible_name})")
-    grid.add_column("Kategoria", style="cyan", width=22)
-    grid.add_column("Szczegóły / Wartości", style="white")
+    grid.add_column("Category", style="cyan", width=24)
+    grid.add_column("Details / Values", style="white")
 
-    # Inwentarz
-    grid.add_row("Status monitorowania", f"[green]{payload.status}[/green]" if payload.status == "Monitored" else f"[red]{payload.status}[/red]")
-    grid.add_row("System Operacyjny (OS)", f"{payload.inventory.os or 'Nieznany'} ({payload.inventory.os_full or ''})")
-    grid.add_row("Grupy Zabbix", ", ".join(payload.host_groups) if payload.host_groups else "-")
-    grid.add_row("Adresy IP", ", ".join(payload.inventory.ip_addresses) if payload.inventory.ip_addresses else "-")
-    grid.add_row("Sprzęt / Wirtualizacja", f"{payload.inventory.hardware or payload.inventory.vendor or 'N/A'}")
+    # Inventory
+    status_style = "[green]Monitored[/green]" if payload.status == "Monitored" else "[red]Unmonitored[/red]"
+    grid.add_row("Monitoring Status", status_style)
+    grid.add_row("Operating System (OS)", f"{payload.inventory.os or 'Unknown'} ({payload.inventory.os_full or ''})")
+    grid.add_row("Zabbix Host Groups", ", ".join(payload.host_groups) if payload.host_groups else "-")
+    grid.add_row("IP Addresses", ", ".join(payload.inventory.ip_addresses) if payload.inventory.ip_addresses else "-")
+    grid.add_row("Hardware / Platform", f"{payload.inventory.hardware or payload.inventory.vendor or 'N/A'}")
 
-    # Metryki
+    # Metrics
     cpu_str = f"{payload.metrics.cpu_utilization_percent}%" if payload.metrics.cpu_utilization_percent is not None else "N/A"
     if payload.metrics.cpu_cores:
         cpu_str += f" ({payload.metrics.cpu_cores} cores)"
@@ -77,91 +77,91 @@ def display_host_summary(payload: HostAnalysisPayload) -> None:
         ram_str += f" ({payload.metrics.memory_utilization_percent}%)"
     grid.add_row("RAM (Used / Total)", ram_str)
 
-    grid.add_row("Uptime systemu", payload.metrics.uptime_formatted or "N/A")
+    grid.add_row("System Uptime", payload.metrics.uptime_formatted or "N/A")
 
-    # Dyski
+    # Disks
     drives_info = []
     for d in payload.metrics.drives:
-        d_str = f"{d.fs_name} [{d.used_formatted or '?'}/{d.total_formatted or '?'}] ({d.used_percent or '?'}% zajęte)"
+        d_str = f"{d.fs_name} [{d.used_formatted or '?'}/{d.total_formatted or '?'}] ({d.used_percent or '?'}% used)"
         drives_info.append(d_str)
-    grid.add_row("Dyski / Wolumeny", "\n".join(drives_info) if drives_info else "Brak danych o dyskach")
+    grid.add_row("Disks / Volumes", "\n".join(drives_info) if drives_info else "No drive data")
 
-    # Usługi
+    # Services
     running_svc = [s.name for s in payload.windows_services if s.state == "Running"]
-    grid.add_row("Aktywne usługi Windows", f"{len(running_svc)} usług (np. {', '.join(running_svc[:5])}...)" if running_svc else "Brak")
+    grid.add_row("Active Windows Services", f"{len(running_svc)} running (e.g. {', '.join(running_svc[:5])}...)" if running_svc else "None")
 
     # Hyper-V
     if payload.hyperv.is_hyperv_host:
         vms = [f"{v.vm_name} ({v.state})" for v in payload.hyperv.guest_vms]
-        grid.add_row("[bold yellow]Rola Hyper-V[/bold yellow]", f"[yellow]Wykryto hypervisor[/yellow] | Maszyny ({len(vms)}): {', '.join(vms[:6])}")
+        grid.add_row("[bold yellow]Hyper-V Role[/bold yellow]", f"[yellow]Hypervisor active[/yellow] | VMs ({len(vms)}): {', '.join(vms[:6])}")
 
-    # Wykryte sygnatury ról
+    # Detected role signatures
     detected = payload.llm_context_hints.get("detected_signatures", [])
     if detected:
-        grid.add_row("[bold green]Wykryte role/sygnatury[/bold green]", "\n".join([f"• [bold]{r}[/bold]" for r in detected]))
+        grid.add_row("[bold green]Detected Roles / Signatures[/bold green]", "\n".join([f"• [bold]{r}[/bold]" for r in detected]))
 
     # Remote Execution
     if payload.remote_execution:
-        r_status = "[green]Sukces[/green]" if payload.remote_execution.success else f"[red]Błąd: {payload.remote_execution.error_message}[/red]"
-        grid.add_row("Zdalna sonda (script.execute)", f"{payload.remote_execution.script_name} -> {r_status}")
+        r_status = "[green]Success[/green]" if payload.remote_execution.success else f"[red]Error: {payload.remote_execution.error_message}[/red]"
+        grid.add_row("Remote Probe (script.execute)", f"{payload.remote_execution.script_name} -> {r_status}")
 
     console.print(grid)
 
 
 def build_parser() -> argparse.ArgumentParser:
-    """Konstrukcja parsera argumentów CLI."""
+    """Build CLI argument parser."""
     parser = argparse.ArgumentParser(
         prog="jass",
-        description="JASS - Just Another System Sniffer: Narzędzie telemetryczne dla Windows/Hyper-V i Zabbix API pod kątem analizy LLM.",
+        description="JASS - Just Another System Sniffer: Telemetry extractor for Windows/Hyper-V and Zabbix API tailored for LLM analysis.",
     )
 
-    # Grupa: Autentykacja i połączenie
-    conn_group = parser.add_argument_group("Opcje połączenia z Zabbix API")
-    conn_group.add_argument("--url", default=os.getenv("ZABBIX_URL"), help="Adres URL instancji Zabbix (np. http://zabbix.local lub env ZABBIX_URL)")
-    conn_group.add_argument("--token", default=os.getenv("ZABBIX_API_TOKEN") or os.getenv("ZABBIX_TOKEN"), help="API Token Zabbix (zalecany, env ZABBIX_API_TOKEN)")
-    conn_group.add_argument("--user", default=os.getenv("ZABBIX_USER") or os.getenv("ZABBIX_USERNAME"), help="Użytkownik Zabbix (fallback login, env ZABBIX_USER)")
-    conn_group.add_argument("--password", default=os.getenv("ZABBIX_PASSWORD"), help="Hasło użytkownika Zabbix (fallback login, env ZABBIX_PASSWORD)")
-    conn_group.add_argument("--insecure", action="store_true", help="Wyłącz weryfikację certyfikatów SSL")
-    conn_group.add_argument("--timeout", type=int, default=15, help="Limit czasu zapytań w sekundach (domyślnie: 15)")
+    # Connection Group
+    conn_group = parser.add_argument_group("Zabbix API Connection Options")
+    conn_group.add_argument("--url", default=os.getenv("ZABBIX_URL"), help="Zabbix URL (e.g. http://zabbix.local or env ZABBIX_URL)")
+    conn_group.add_argument("--token", default=os.getenv("ZABBIX_API_TOKEN") or os.getenv("ZABBIX_TOKEN"), help="Zabbix API Token (recommended, env ZABBIX_API_TOKEN)")
+    conn_group.add_argument("--user", default=os.getenv("ZABBIX_USER") or os.getenv("ZABBIX_USERNAME"), help="Zabbix Username (fallback login, env ZABBIX_USER)")
+    conn_group.add_argument("--password", default=os.getenv("ZABBIX_PASSWORD"), help="Zabbix Password (fallback login, env ZABBIX_PASSWORD)")
+    conn_group.add_argument("--insecure", action="store_true", help="Disable SSL certificate verification")
+    conn_group.add_argument("--timeout", type=int, default=15, help="Request timeout in seconds (default: 15)")
 
-    # Grupa: Zakres zbierania
-    target_group = parser.add_argument_group("Wybór celu badania (Target)")
-    target_group.add_argument("-H", "--host", help="Nazwa hosta (lub widoczna nazwa / hostid) do zbadania")
-    target_group.add_argument("-G", "--hostgroup", help="Nazwa grupy hostów (lub groupid) do zbadania")
-    target_group.add_argument("--list-hosts", action="store_true", help="Wypisz listę dostępnych hostów w Zabbixie")
-    target_group.add_argument("--list-groups", action="store_true", help="Wypisz listę grup hostów w Zabbixie")
+    # Target Group
+    target_group = parser.add_argument_group("Target Selection")
+    target_group.add_argument("-H", "--host", help="Host name (or visible name / hostid) to inspect")
+    target_group.add_argument("-G", "--hostgroup", help="Host group name (or groupid) to inspect")
+    target_group.add_argument("--list-hosts", action="store_true", help="List all available hosts in Zabbix")
+    target_group.add_argument("--list-groups", action="store_true", help="List all available host groups in Zabbix")
 
-    # Grupa: Opcje zaawansowane & Output
-    exec_group = parser.add_argument_group("Wykonanie sond i zapis wyników")
-    exec_group.add_argument("-o", "--output-dir", default=".", help="Katalog zapisu pliku [nazwa_hosta]_analysis.json (domyślnie: bieżący katalog)")
-    exec_group.add_argument("--remote-probe", action="store_true", help="Uruchom zdalną sondę PowerShell/script.execute na agencie Zabbix")
-    exec_group.add_argument("--script", help="Nazwa konkretnego skryptu Zabbix do wykonania podczas zdalnej sondy")
-    exec_group.add_argument("--prompt", action="store_true", help="Zapisz także gotowy plik promptu dla LLM ([nazwa_hosta]_prompt.md)")
-    exec_group.add_argument("--print-prompt", action="store_true", help="Wypisz wygenerowany prompt LLM bezpośrednio w konsoli")
+    # Execution & Output Group
+    exec_group = parser.add_argument_group("Probe Execution & Output")
+    exec_group.add_argument("-o", "--output-dir", default=".", help="Output directory for [host_name]_analysis.json (default: current directory)")
+    exec_group.add_argument("--remote-probe", action="store_true", help="Execute remote probe (PowerShell / script.execute) on Zabbix agent")
+    exec_group.add_argument("--script", help="Specific Zabbix script name to execute during remote probe")
+    exec_group.add_argument("--prompt", action="store_true", help="Also generate LLM prompt markdown file ([host_name]_prompt.md)")
+    exec_group.add_argument("--print-prompt", action="store_true", help="Print generated LLM prompt directly to console")
 
-    # Grupa: Web UI
-    ui_group = parser.add_argument_group("Interfejs Graficzny (Web GUI)")
-    ui_group.add_argument("--serve", "--ui", action="store_true", help="Uruchom interfejs graficzny Web Dashboard")
-    ui_group.add_argument("--host-bind", default="127.0.0.1", help="Adres IP dla serwera Web UI (domyślnie: 127.0.0.1)")
-    ui_group.add_argument("--port", type=int, default=8080, help="Port serwera Web UI (domyślnie: 8080)")
+    # Web UI Group
+    ui_group = parser.add_argument_group("Web Dashboard (GUI)")
+    ui_group.add_argument("--serve", "--ui", action="store_true", help="Launch Web Dashboard interface")
+    ui_group.add_argument("--host-bind", default="127.0.0.1", help="Host address to bind Web UI (default: 127.0.0.1)")
+    ui_group.add_argument("--port", type=int, default=8080, help="Port for Web UI server (default: 8080)")
 
-    parser.add_argument("-v", "--verbose", action="store_true", help="Włącz szczegółowe logowanie diagnostyczne (DEBUG)")
+    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose diagnostic logging (DEBUG)")
 
     return parser
 
 
 def run_cli(args: Optional[List[str]] = None) -> int:
-    """Główna funkcja wykonawcza CLI."""
+    """Main CLI execution handler."""
     parser = build_parser()
     parsed_args = parser.parse_args(args)
 
     setup_logging(verbose=parsed_args.verbose)
     print_banner()
 
-    # Obsługa trybu Web UI
+    # Web UI mode
     if parsed_args.serve:
         from jass.ui.app import start_ui_server
-        console.print(f"[bold green]Uruchamianie JASS Web Dashboard na http://{parsed_args.host_bind}:{parsed_args.port}...[/bold green]")
+        console.print(f"[bold green]Starting JASS Web Dashboard on http://{parsed_args.host_bind}:{parsed_args.port}...[/bold green]")
         start_ui_server(
             host=parsed_args.host_bind,
             port=parsed_args.port,
@@ -173,13 +173,13 @@ def run_cli(args: Optional[List[str]] = None) -> int:
         )
         return 0
 
-    # Sprawdzenie parametrów połączenia
+    # Connection parameters validation
     if not parsed_args.url:
-        console.print("[bold red]Błąd:[/bold red] Nie podano adresu URL Zabbixa. Użyj parametru [yellow]--url[/yellow] lub ustaw zmienną środowiskową [yellow]ZABBIX_URL[/yellow].")
+        console.print("[bold red]Error:[/bold red] Missing Zabbix URL. Provide [yellow]--url[/yellow] or set [yellow]ZABBIX_URL[/yellow] environment variable.")
         return 1
 
     if not parsed_args.token and not (parsed_args.user and parsed_args.password):
-        console.print("[bold red]Błąd:[/bold red] Wymagany jest API Token ([yellow]--token[/yellow]) lub para login/hasło ([yellow]--user[/yellow] i [yellow]--password[/yellow]).")
+        console.print("[bold red]Error:[/bold red] Missing authentication. Provide API Token ([yellow]--token[/yellow]) or credentials ([yellow]--user[/yellow] & [yellow]--password[/yellow]).")
         return 1
 
     try:
@@ -192,25 +192,25 @@ def run_cli(args: Optional[List[str]] = None) -> int:
             verify_ssl=not parsed_args.insecure,
         ) as analyzer:
             
-            # 1. Wypisanie grup
+            # 1. List groups
             if parsed_args.list_groups:
                 groups = analyzer.list_hostgroups()
-                table = Table(title="Dostępne grupy hostów Zabbix", box=box.SIMPLE_HEAVY)
+                table = Table(title="Available Zabbix Host Groups", box=box.SIMPLE_HEAVY)
                 table.add_column("ID", style="cyan")
-                table.add_column("Nazwa grupy", style="green")
+                table.add_column("Group Name", style="green")
                 for g in groups:
                     table.add_row(g["groupid"], g["name"])
                 console.print(table)
                 return 0
 
-            # 2. Wypisanie hostów
+            # 2. List hosts
             if parsed_args.list_hosts:
                 hosts = analyzer.list_hosts()
-                table = Table(title="Dostępne hosty Zabbix", box=box.SIMPLE_HEAVY)
+                table = Table(title="Available Zabbix Hosts", box=box.SIMPLE_HEAVY)
                 table.add_column("HostID", style="cyan")
-                table.add_column("Nazwa techniczna (Host)", style="bold white")
-                table.add_column("Widoczna nazwa", style="yellow")
-                table.add_column("IP", style="green")
+                table.add_column("Technical Host Name", style="bold white")
+                table.add_column("Visible Name", style="yellow")
+                table.add_column("IP Address", style="green")
                 table.add_column("Status", style="magenta")
                 for h in hosts:
                     ips = [i["ip"] for i in h.get("interfaces", []) if i.get("ip")]
@@ -219,9 +219,9 @@ def run_cli(args: Optional[List[str]] = None) -> int:
                 console.print(table)
                 return 0
 
-            # 3. Badanie pojedynczego hosta
+            # 3. Analyze single host
             if parsed_args.host:
-                with console.status(f"[bold yellow]Sniffing hosta '{parsed_args.host}'...[/bold yellow]", spinner="dots"):
+                with console.status(f"[bold yellow]Sniffing host '{parsed_args.host}'...[/bold yellow]", spinner="dots"):
                     payload = analyzer.analyze_host(
                         host_identifier=parsed_args.host,
                         run_remote_probe=parsed_args.remote_probe,
@@ -230,49 +230,49 @@ def run_cli(args: Optional[List[str]] = None) -> int:
 
                 display_host_summary(payload)
                 saved_path = analyzer.save_analysis_json(payload, output_dir=parsed_args.output_dir)
-                console.print(f"\n[bold green]✔ Zapisano plik analizy JSON:[/bold green] [cyan]{saved_path}[/cyan]")
+                console.print(f"\n[bold green]✔ Saved analysis JSON:[/bold green] [cyan]{saved_path}[/cyan]")
 
                 if parsed_args.prompt:
                     prompt_text = analyzer.generate_llm_prompt(payload)
                     prompt_file = Path(parsed_args.output_dir) / f"{payload.host_name}_prompt.md"
                     prompt_file.write_text(prompt_text, encoding="utf-8")
-                    console.print(f"[bold green]✔ Zapisano plik promptu dla LLM:[/bold green] [cyan]{prompt_file.resolve()}[/cyan]")
+                    console.print(f"[bold green]✔ Saved LLM prompt:[/bold green] [cyan]{prompt_file.resolve()}[/cyan]")
 
                 if parsed_args.print_prompt:
-                    console.print(Panel(analyzer.generate_llm_prompt(payload), title="Wygenerowany Prompt dla LLM", border_style="green"))
+                    console.print(Panel(analyzer.generate_llm_prompt(payload), title="Generated Prompt for LLM", border_style="green"))
 
                 return 0
 
-            # 4. Badanie grupy hostów
+            # 4. Analyze host group
             if parsed_args.hostgroup:
-                with console.status(f"[bold yellow]Sniffing grupy hostów '{parsed_args.hostgroup}'...[/bold yellow]", spinner="dots"):
+                with console.status(f"[bold yellow]Sniffing host group '{parsed_args.hostgroup}'...[/bold yellow]", spinner="dots"):
                     payloads = analyzer.analyze_hostgroup(
                         group_identifier=parsed_args.hostgroup,
                         run_remote_probe=parsed_args.remote_probe,
                         script_name=parsed_args.script,
                     )
 
-                console.print(f"\n[bold green]Zakończono badanie {len(payloads)} hostów z grupy '{parsed_args.hostgroup}'.[/bold green]\n")
+                console.print(f"\n[bold green]Completed inspection for {len(payloads)} hosts in group '{parsed_args.hostgroup}'.[/bold green]\n")
                 for p in payloads:
                     display_host_summary(p)
 
                 saved_files = analyzer.save_group_analysis_json(payloads, output_dir=parsed_args.output_dir)
-                console.print(f"[bold green]✔ Zapisano {len(saved_files)} plików analizy w katalogu:[/bold green] [cyan]{Path(parsed_args.output_dir).resolve()}[/cyan]")
+                console.print(f"[bold green]✔ Saved {len(saved_files)} analysis files in:[/bold green] [cyan]{Path(parsed_args.output_dir).resolve()}[/cyan]")
                 return 0
 
-            # Brak określonego celu
-            console.print("[bold yellow]Uwaga:[/bold yellow] Nie wskazano celu. Użyj [cyan]--host <nazwa>[/cyan] lub [cyan]--hostgroup <grupa>[/cyan] lub [cyan]--serve[/cyan] dla Web UI.")
-            console.print("Użyj [cyan]jass --help[/cyan], aby zobaczyć pełną listę opcji.")
+            # No target specified
+            console.print("[bold yellow]Notice:[/bold yellow] No target specified. Use [cyan]--host <name>[/cyan], [cyan]--hostgroup <group>[/cyan], or [cyan]--serve[/cyan] for Web UI.")
+            console.print("Run [cyan]jass --help[/cyan] for full command line reference.")
             return 1
 
     except ZabbixAuthException as auth_err:
-        console.print(f"[bold red]Błąd uwierzytelnienia w Zabbix:[/bold red] {auth_err}")
+        console.print(f"[bold red]Zabbix Authentication Error:[/bold red] {auth_err}")
         return 2
     except ZabbixAPIException as api_err:
-        console.print(f"[bold red]Błąd Zabbix API:[/bold red] {api_err}")
+        console.print(f"[bold red]Zabbix API Error:[/bold red] {api_err}")
         return 3
     except Exception as exc:
-        console.print(f"[bold red]Nieoczekiwany błąd:[/bold red] {exc}")
+        console.print(f"[bold red]Unexpected Error:[/bold red] {exc}")
         if parsed_args.verbose:
             console.print_exception()
         return 4

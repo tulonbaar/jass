@@ -1,6 +1,6 @@
 """
 JASS - Just Another System Sniffer
-Moduł Sniffera dla systemów Windows Server oraz Hyper-V
+Sniffer module for Microsoft Windows Server and Hyper-V platforms
 """
 
 from __future__ import annotations
@@ -29,8 +29,9 @@ logger = logging.getLogger("jass.modules.windows")
 
 class WindowsSniffer(BaseSystemSniffer):
     """
-    Dedykowany sniffer dla systemów z rodziny Microsoft Windows oraz roli Hyper-V.
-    Zbiera inwentarz, telemetrię, statusy usług, maszyny wirtualne i wykonuje zdalne sondy przez Zabbix API.
+    Dedicated telemetry sniffer for Microsoft Windows and Hyper-V hosts.
+    Extracts inventory, performance metrics, Windows services, Hyper-V virtual machines,
+    and executes remote probes via Zabbix API.
     """
 
     SERVICE_STATES = {
@@ -62,7 +63,7 @@ class WindowsSniffer(BaseSystemSniffer):
 
     @staticmethod
     def format_bytes(size_bytes: Optional[int]) -> Optional[str]:
-        """Konwertuje bajty na czytelny format (B, KB, MB, GB, TB)."""
+        """Formats raw bytes into human-readable unit string (B, KB, MB, GB, TB)."""
         if size_bytes is None:
             return None
         try:
@@ -78,7 +79,7 @@ class WindowsSniffer(BaseSystemSniffer):
 
     @staticmethod
     def format_uptime(seconds: Optional[int]) -> Optional[str]:
-        """Konwertuje sekundy uptime na czytelny format (dni, godziny, minuty)."""
+        """Formats uptime in seconds into human-readable days, hours, minutes."""
         if seconds is None:
             return None
         try:
@@ -100,10 +101,10 @@ class WindowsSniffer(BaseSystemSniffer):
 
     def fetch_host_details(self, host_identifier: str) -> Dict[str, Any]:
         """
-        Pobiera podstawowe dane hosta z Zabbix API (metoda host.get).
-        Obsługuje wyszukiwanie po host_name, visible_name lub hostid.
+        Retrieves core host metadata from Zabbix API (`host.get`).
+        Supports searching by technical host name, visible name, or numeric hostid.
         """
-        logger.debug(f"Pobieranie danych hosta '{host_identifier}' (host.get)...")
+        logger.debug(f"Retrieving host details for '{host_identifier}' (host.get)...")
         
         params: Dict[str, Any] = {
             "output": ["hostid", "host", "name", "status", "description"],
@@ -113,28 +114,28 @@ class WindowsSniffer(BaseSystemSniffer):
             "selectInventory": "extend",
         }
 
-        # Jeśli identyfikator to cyfry, spróbujmy najpierw hostids
+        # If identifier is numeric, query by hostid first
         if host_identifier.isdigit():
             params["hostids"] = [host_identifier]
             hosts = self.client.call("host.get", params)
             if hosts:
                 return hosts[0]
 
-        # Wyszukiwanie po nazwie technicznej hosta
+        # Query by technical host name
         params_by_host = dict(params)
         params_by_host["filter"] = {"host": [host_identifier]}
         hosts = self.client.call("host.get", params_by_host)
         if hosts:
             return hosts[0]
 
-        # Wyszukiwanie po widocznej nazwie (Visible name)
+        # Query by visible name
         params_by_name = dict(params)
         params_by_name["filter"] = {"name": [host_identifier]}
         hosts = self.client.call("host.get", params_by_name)
         if hosts:
             return hosts[0]
 
-        # Wyszukiwanie elastyczne (search)
+        # Fuzzy search
         params_search = dict(params)
         params_search["search"] = {"name": host_identifier, "host": host_identifier}
         params_search["searchByAny"] = True
@@ -142,17 +143,17 @@ class WindowsSniffer(BaseSystemSniffer):
         if hosts:
             return hosts[0]
 
-        raise ZabbixAPIException(f"Nie odnaleziono hosta '{host_identifier}' w systemie Zabbix.")
+        raise ZabbixAPIException(f"Host '{host_identifier}' not found in Zabbix.")
 
     def collect_inventory(self, host_id: str, host_raw: Dict[str, Any]) -> HostInventory:
         """
-        Wyciąga dane inwentaryzacyjne z obiektu hosta Zabbix (selectInventory: 'extend').
+        Extracts inventory data from Zabbix host object (selectInventory: 'extend').
         """
         raw_inv = host_raw.get("inventory") or {}
         if isinstance(raw_inv, list):
             raw_inv = raw_inv[0] if raw_inv else {}
 
-        # Wyciąganie adresów IP i MAC z interfejsów
+        # Extract IPs and MACs
         ips: List[str] = []
         macs: List[str] = []
 
@@ -160,7 +161,7 @@ class WindowsSniffer(BaseSystemSniffer):
             if iface.get("ip") and iface["ip"] not in ips:
                 ips.append(iface["ip"])
 
-        # Inventory MACs
+        # Inventory MAC fields
         for k in ["macaddress_a", "macaddress_b"]:
             if raw_inv.get(k):
                 macs.append(raw_inv[k])
@@ -184,13 +185,13 @@ class WindowsSniffer(BaseSystemSniffer):
 
     def fetch_all_items(self, host_id: str) -> List[Dict[str, Any]]:
         """
-        Pobiera wszystkie aktywne i monitorowane Item-y dla danego hosta (item.get).
+        Retrieves all active, monitored items for the given host (`item.get`).
         """
-        logger.debug(f"Pobieranie listy Itemów dla hostid={host_id} (item.get)...")
+        logger.debug(f"Retrieving monitored items for hostid={host_id} (item.get)...")
         params = {
             "hostids": [host_id],
             "output": ["itemid", "name", "key_", "lastvalue", "units", "value_type", "state", "status", "lastclock"],
-            "filter": {"status": 0},  # Tylko aktywne (monitored)
+            "filter": {"status": 0},  # Monitored items only
             "monitored": True,
         }
         items = self.client.call("item.get", params)
@@ -198,7 +199,7 @@ class WindowsSniffer(BaseSystemSniffer):
 
     def collect_metrics(self, host_id: str, items: Optional[List[Dict[str, Any]]] = None) -> HostMetrics:
         """
-        Filtruje kluczowe metryki CPU, RAM, dysków i uptime na podstawie kluczy Zabbix (item.get).
+        Filters key CPU, RAM, disk, and uptime metrics based on standard Zabbix keys (`item.get`).
         """
         if items is None:
             items = self.fetch_all_items(host_id)
@@ -277,8 +278,8 @@ class WindowsSniffer(BaseSystemSniffer):
                     pass
 
             # --- 4. Disks / Filesystems ---
-            # np. vfs.fs.size[C:,total], vfs.fs.size["C:",used], vfs.fs.size[D:,pused]
-            fs_match = re.search(r"vfs\.fs\.size\[\"?([A-Za-z]:|[A-Za-z0-9_\\/\-]+)\"?\s*,\s*([a-zA-Z]+)\]", key)
+            # e.g., vfs.fs.size[C:,total], vfs.fs.size["C:",used], vfs.fs.size[D:,pused]
+            fs_match = re.search(r'vfs\.fs\.size\["?([A-Za-z]:|[A-Za-z0-9_\/\-]+)"?\s*,\s*([a-zA-Z]+)\]', key)
             if fs_match:
                 drive_letter = fs_match.group(1).upper().replace('"', '').strip()
                 metric_type = fs_match.group(2).lower()
@@ -301,7 +302,7 @@ class WindowsSniffer(BaseSystemSniffer):
                 except (ValueError, TypeError):
                     pass
 
-        # Obliczenie brakujących procentów pamięci RAM
+        # Calculate memory percentage if missing
         if metrics.memory_utilization_percent is None and metrics.memory_total_bytes:
             if metrics.memory_used_bytes:
                 metrics.memory_utilization_percent = round((metrics.memory_used_bytes / metrics.memory_total_bytes) * 100, 2)
@@ -311,7 +312,7 @@ class WindowsSniffer(BaseSystemSniffer):
                 metrics.memory_used_formatted = self.format_bytes(used)
                 metrics.memory_utilization_percent = round((used / metrics.memory_total_bytes) * 100, 2)
 
-        # Składanie DriveMetric
+        # Assemble DriveMetrics
         for fs_name, d_data in sorted(drives_map.items()):
             tot = d_data.get("total_bytes")
             used = d_data.get("used_bytes")
@@ -347,7 +348,7 @@ class WindowsSniffer(BaseSystemSniffer):
 
     def collect_services(self, host_id: str, items: Optional[List[Dict[str, Any]]] = None) -> List[WindowsService]:
         """
-        Pobiera i analizuje monitorowane usługi Windows (service.info[*], services[*]).
+        Retrieves and analyzes monitored Windows services (service.info[*], services[*]).
         """
         if items is None:
             items = self.fetch_all_items(host_id)
@@ -359,8 +360,8 @@ class WindowsSniffer(BaseSystemSniffer):
             name = it.get("name", "")
             lastval = str(it.get("lastvalue", "")).strip()
 
-            # Dopasowanie kluczy typu service.info[service_name, state] lub service.info[service_name, startup]
-            svc_match = re.search(r"service\.info\[\"?([^\],]+)\"?\s*(?:,\s*([^\],]+))?\]", key, re.IGNORECASE)
+            # Match keys like service.info[service_name, state] or service.info[service_name, startup]
+            svc_match = re.search(r'service\.info\["?([^\],]+)"?\s*(?:,\s*([^\],]+))?\]', key, re.IGNORECASE)
             if svc_match:
                 svc_name = svc_match.group(1).strip()
                 param_type = (svc_match.group(2) or "state").strip().lower()
@@ -382,7 +383,6 @@ class WindowsSniffer(BaseSystemSniffer):
                     startup_str = self.SERVICE_STARTUP_TYPES.get(lastval, f"Startup({lastval})")
                     services[svc_name].startup_type = startup_str
 
-            # Inne wykrycia usług (np. z szablonów WMI lub skryptów)
             elif "windows service" in name.lower() or "usługa windows" in name.lower():
                 if key not in services:
                     state_str = "Running" if lastval in ["0", "1", "running"] else lastval
@@ -398,7 +398,7 @@ class WindowsSniffer(BaseSystemSniffer):
 
     def collect_virtualization_data(self, host_id: str, items: Optional[List[Dict[str, Any]]] = None) -> HyperVData:
         """
-        Pobiera metryki i listę maszyn wirtualnych jeśli serwer pełni rolę Hyper-V (Hyper-V templates).
+        Retrieves Hyper-V virtualization metrics and guest VM lists (Hyper-V templates).
         """
         if items is None:
             items = self.fetch_all_items(host_id)
@@ -412,15 +412,13 @@ class WindowsSniffer(BaseSystemSniffer):
             name = it.get("name", "")
             lastval = str(it.get("lastvalue", "")).strip()
 
-            # Sprawdzenie obecności kluczy Hyper-V
+            # Check for Hyper-V keys
             if re.search(r"hyperv|msvm_|hyper-v", key, re.IGNORECASE) or "hyper-v" in name.lower():
                 hyperv_data.is_hyperv_host = True
                 raw_hyperv[key] = {"name": name, "value": lastval}
 
-                # Wykrywanie maszyn wirtualnych np. wmi.get[..., Select ElementName from Msvm_ComputerSystem]
-                # lub perf_counter["\Hyper-V Virtual Machine Health Summary\Total Health Issues"]
-                # lub perf_counter["\Hyper-V Hypervisor Virtual Processor(VM_NAME:HV VP 0)\% Guest Run Time"]
-                vm_name_match = re.search(r"Hyper-V.*?VM\(([^)]+)\)|Hyper-V.*?Processor\(([^:]+):|vm\.state\[\"?([^\"]+)\"?\]", key, re.IGNORECASE)
+                # VM name detection
+                vm_name_match = re.search(r'Hyper-V.*?VM\(([^)]+)\)|Hyper-V.*?Processor\(([^:]+):|vm\.state\["?([^"]+)"?\]', key, re.IGNORECASE)
                 if vm_name_match:
                     vm_name = next(g for g in vm_name_match.groups() if g is not None).strip()
                     if vm_name not in ["_Total", "Total", "root", ""]:
@@ -432,14 +430,12 @@ class WindowsSniffer(BaseSystemSniffer):
                             }
                         vms_map[vm_name]["raw_attributes"][key] = lastval
 
-                # Stan maszyn wirtualnych z itemów
                 if "virtual machines" in name.lower() or "active virtual machines" in name.lower():
                     try:
                         hyperv_data.virtual_machines_count = max(hyperv_data.virtual_machines_count, int(float(lastval)))
                     except (ValueError, TypeError):
                         pass
 
-        # Jeśli wykryto gości Hyper-V
         if vms_map:
             hyperv_data.is_hyperv_host = True
             for vm_name, vm_dict in sorted(vms_map.items()):
@@ -461,25 +457,24 @@ class WindowsSniffer(BaseSystemSniffer):
         script_name_or_cmd: Optional[str] = None,
     ) -> Optional[RemoteExecutionResult]:
         """
-        Wykonuje zdalne polecenie/skrypt na hoście przez Zabbix API (script.execute).
-        Przechwytuje wartość 'value' zwróconą z agenta.
+        Executes a remote diagnostic script on host agent via Zabbix API (`script.execute`).
+        Captures the 'value' returned from the agent.
         """
-        logger.info(f"Wykonywanie zdalnej sondy na hostid={host_id} (script.execute)...")
+        logger.info(f"Executing remote probe on hostid={host_id} (script.execute)...")
         
         try:
-            # 1. Pobranie dostępnych skryptów w Zabbixie dla danego hosta (script.get)
+            # 1. Fetch available scripts for host (script.get)
             available_scripts = self.client.call("script.get", {"hostids": [host_id]})
             target_script = None
 
             if script_name_or_cmd:
-                # Szukamy po nazwie lub ID
                 for sc in available_scripts:
                     if sc.get("name", "").lower() == script_name_or_cmd.lower() or sc.get("scriptid") == script_name_or_cmd:
                         target_script = sc
                         break
 
             if not target_script and available_scripts:
-                # Wybieramy pierwszy pasujący skrypt sieciowy / diagnostyczny lub pierwszy z listy
+                # Find first matching diagnostic script
                 for sc in available_scripts:
                     sc_name = sc.get("name", "").lower()
                     if any(term in sc_name for term in ["port", "probe", "powershell", "netstat", "tcp", "sniffer", "diag"]):
@@ -489,14 +484,14 @@ class WindowsSniffer(BaseSystemSniffer):
                     target_script = available_scripts[0]
 
             if not target_script:
-                logger.warning(f"Brak zdefiniowanych lub dopasowanych skryptów w Zabbixie dla hostid={host_id}.")
+                logger.warning(f"No matching scripts found in Zabbix for hostid={host_id}.")
                 return None
 
             script_id = target_script["scriptid"]
             script_name = target_script.get("name", f"Script_{script_id}")
-            logger.info(f"Uruchamianie skryptu Zabbix '{script_name}' (ID: {script_id})...")
+            logger.info(f"Running Zabbix script '{script_name}' (ID: {script_id})...")
 
-            # 2. Wywołanie script.execute
+            # 2. Call script.execute
             exec_params = {
                 "scriptid": script_id,
                 "hostid": host_id,
@@ -509,7 +504,7 @@ class WindowsSniffer(BaseSystemSniffer):
             elif isinstance(exec_res, str):
                 raw_output = exec_res
 
-            # 3. Parsowanie portów nasłuchujących jeśli skrypt zwrócił tabelę/PowerShell Get-NetTCPConnection
+            # 3. Parse listening ports
             parsed_ports = self._parse_listening_ports(raw_output)
 
             return RemoteExecutionResult(
@@ -521,7 +516,7 @@ class WindowsSniffer(BaseSystemSniffer):
             )
 
         except ZabbixAPIException as exc:
-            logger.error(f"Błąd wykonania zdalnego skryptu na hostid={host_id}: {exc}")
+            logger.error(f"Remote script execution error on hostid={host_id}: {exc}")
             return RemoteExecutionResult(
                 script_name=script_name_or_cmd or "Unknown",
                 success=False,
@@ -531,13 +526,12 @@ class WindowsSniffer(BaseSystemSniffer):
     @staticmethod
     def _parse_listening_ports(output: str) -> List[Dict[str, Any]]:
         """
-        Pomocnik parsowania wyjścia z PowerShell (np. Get-NetTCPConnection -State Listen | Select LocalAddress,LocalPort,OwningProcess).
+        Helper to parse PowerShell / Netstat output (e.g., Get-NetTCPConnection -State Listen).
         """
         ports: List[Dict[str, Any]] = []
         lines = output.strip().splitlines()
         for line in lines:
             line_str = line.strip()
-            # Przykłady: "0.0.0.0:443" lub "TCP 0.0.0.0:1433" lub "LocalPort: 80"
             match_ip_port = re.search(r"(?:TCP|UDP)?\s*([0-9\.\*]+|\[::\]|::):(\d+)", line_str, re.IGNORECASE)
             if match_ip_port:
                 ip = match_ip_port.group(1)
@@ -554,12 +548,12 @@ class WindowsSniffer(BaseSystemSniffer):
         remote_res: Optional[RemoteExecutionResult],
     ) -> Dict[str, Any]:
         """
-        Syntetyzuje podpowiedzi kontekstowe i wykryte sygnatury aplikacji dla modelu LLM.
+        Synthesizes context hints and detected application signatures for LLM analysis.
         """
         detected_roles: List[str] = []
         active_service_names = [s.name.lower() for s in services if s.state == "Running"]
 
-        # Sygnatury ról Windows
+        # Windows role signatures
         if any("ntds" in s or "adws" in s or "kdc" in s or "dns" in s for s in active_service_names):
             detected_roles.append("Active Directory Domain Controller / DNS")
         if any("mssql" in s or "sqlserver" in s or "sqlbrowser" in s for s in active_service_names):
@@ -588,11 +582,11 @@ class WindowsSniffer(BaseSystemSniffer):
 
     def analyze_host(self, host_identifier: str, run_remote_probe: bool = False, script_name: Optional[str] = None) -> HostAnalysisPayload:
         """
-        Główna metoda analityczna - orkiestruje pobranie inwentarza, telemetrii, usług i buduje payload.
+        Main analytical method - orchestrates inventory, metrics, services, and builds final payload.
         """
-        logger.info(f"Rozpoczynanie analizy hosta '{host_identifier}'...")
+        logger.info(f"Starting analysis for host '{host_identifier}'...")
         
-        # 1. Pobranie metadanych hosta
+        # 1. Fetch host metadata
         host_raw = self.fetch_host_details(host_identifier)
         host_id = host_raw["hostid"]
         host_name = host_raw.get("host", host_identifier)
@@ -613,22 +607,22 @@ class WindowsSniffer(BaseSystemSniffer):
             for i in host_raw.get("interfaces", [])
         ]
 
-        # 2. Pobranie wszystkich Itemów dla hosta
+        # 2. Fetch monitored items
         items = self.fetch_all_items(host_id)
-        logger.info(f"Pobrano {len(items)} monitorowanych itemów dla hosta {host_name} (hostid={host_id}).")
+        logger.info(f"Fetched {len(items)} monitored items for host {host_name} (hostid={host_id}).")
 
-        # 3. Zbieranie poszczególnych domen danych
+        # 3. Collect domain datasets
         inventory = self.collect_inventory(host_id, host_raw)
         metrics = self.collect_metrics(host_id, items)
         services = self.collect_services(host_id, items)
         hyperv = self.collect_virtualization_data(host_id, items)
 
-        # 4. Opcjonalne zdalne wykonanie skryptu (Remote Execution)
+        # 4. Optional Remote Probe
         remote_res: Optional[RemoteExecutionResult] = None
         if run_remote_probe:
             remote_res = self.execute_remote_probe(host_id, script_name_or_cmd=script_name)
 
-        # 5. Budowa syntetycznych podpowiedzi dla LLM
+        # 5. Build LLM Context Hints
         llm_hints = self._synthesize_llm_hints(inventory, metrics, services, hyperv, remote_res)
 
         payload = HostAnalysisPayload(
@@ -647,5 +641,5 @@ class WindowsSniffer(BaseSystemSniffer):
             llm_context_hints=llm_hints,
         )
 
-        logger.info(f"Zakończono analizę hosta {host_name}. Wykryto ról: {len(llm_hints.get('detected_signatures', []))}.")
+        logger.info(f"Completed analysis for host {host_name}. Detected role signatures: {len(llm_hints.get('detected_signatures', []))}.")
         return payload

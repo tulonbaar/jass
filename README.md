@@ -1,150 +1,175 @@
 # 🛡️ JASS - Just Another System Sniffer
 
-**JASS (Just Another System Sniffer)** to zaawansowany framework i narzędzie telemetryczne klasy DevOps / SRE napisane w Pythonie 3.10+, integrujące się z **Zabbix API (6.0+)**. 
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![Zabbix API](https://img.shields.io/badge/Zabbix%20API-6.0%20LTS%20%7C%206.4%20%7C%207.0+-red.svg)](https://www.zabbix.com/documentation/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Dashboard-green.svg)](https://fastapi.tiangolo.com/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Głównym celem aplikacji jest głębokie badanie monitorowanych maszyn (**Microsoft Windows Server, Windows 10/11, Hyper-V Clusters**) i generowanie ustrukturyzowanych plików JSON (`[nazwa_hosta]_analysis.json`), które stanowią gotowy wsad (context payload) dla modeli językowych (**LLM**: OpenAI GPT-4o, Claude 3.5 Sonnet, Ollama, DeepSeek itp.) w celu automatycznej analizy przeznaczenia biznesowego serwerów, klasyfikacji ról i audytu wydajności.
+**JASS (Just Another System Sniffer)** is an enterprise-grade DevOps/SRE telemetry framework and automation tool built in Python 3.10+. It interfaces natively with the **Zabbix API (6.0+)** to extract deep infrastructure telemetry from monitored hosts (**Microsoft Windows Server, Windows Desktop editions, and Hyper-V Virtualization Clusters**).
 
-Aplikacja oferuje zarówno bogaty **interfejs CLI** z kolorowymi tabelami i paskami postępu, jak i nowoczesny **Web Dashboard (FastAPI + Tailwind)** z wbudowanym **LLM Studio**.
+JASS generates structured, normalized JSON payloads (`[hostname]_analysis.json`) optimized as high-density context for Large Language Models (**LLMs** such as OpenAI GPT-4o, Anthropic Claude 3.5 Sonnet, DeepSeek, and Ollama) to autonomously classify business roles, audit system health, and diagnose infrastructure architectures.
 
----
-
-## 🚀 Kluczowe Funkcjonalności
-
-1. **Nowoczesna integracja z Zabbix API (JSON-RPC 2.0)**:
-   - Natywna obsługa **API Token** (rekomendowana od Zabbix 6.0+) z nagłówkiem `Authorization: Bearer <token>` oraz `auth` w payloadzie.
-   - Automatyczny **fallback** na logowanie użytkownik/hasło (`user.login`) w przypadku braku tokena.
-   - Obsługa timeoutów, automatycznych ponowień (retry backoff) i certyfikatów self-signed (`--insecure`).
-
-2. **Głębokie zbieranie danych telemetrycznych**:
-   - 📋 **[Host Inventory]**: System operacyjny, wersja jądra, architektura, producent, model sprzętu, numer seryjny, adresy MAC i IP, lokalizacja, tagi Zabbix.
-   - ⚡ **[Key Performance Metrics]**: Utylizacja CPU (%), rdzenie procesora, pamięć RAM (Total, Used, Free, % w formacie czytelnym dla człowieka), Uptime systemu.
-   - 💾 **[Storage & Drives]**: Pojemność, wolne/zajęte miejsce i procentowe obciążenie dla wszystkich wolumenów (C:, D:, E: itp.).
-   - ⚙️ **[Windows Services]**: Status usług systemowych (`Running`, `Stopped`, `Paused`), typ uruchomienia (`Automatic`, `Manual`, `Disabled`) oraz mapowanie kluczy `service.info[*]`.
-   - 🔮 **[Hyper-V Telemetry]**: Wykrywanie roli Hypervisora, lista zwirtualizowanych maszyn gości (Guest VMs), ich stan działania, alokacja vCPU/RAM i replikacja.
-   - 🔌 **[Remote Execution (`script.execute`)]**: Zdalne wykonywanie skryptów PowerShell (np. `Get-NetTCPConnection` dla nasłuchujących portów) bezpośrednio na agencie przez Zabbix API.
-
-3. **LLM Studio & Prompt Engineering**:
-   - Automatyczna synteza sygnatur ról (np. Active Directory DC, MS SQL Server, IIS Web Server, Hyper-V Node, Backup Repository).
-   - Generowanie gotowych promptów dla ChatGPT, Claude lub lokalnych modeli Ollama w formacie Chat Completions.
-
-4. **Wbudowany Web Dashboard**:
-   - Podgląd hostów, grup, live telemetry, wykresy zajętości dysków, tabela usług z filtrami, terminal zdalnej sondy i 1-click eksport do LLM.
-
-5. **Modułowa architektura OOP**:
-   - `BaseSystemSniffer` umożliwia łatwe dobudowywanie kolejnych modułów (np. Linux Sniffer, VMware ESXi Sniffer, Network Appliances).
+The tool provides both an interactive **Rich CLI interface** and a modern **Web Dashboard (FastAPI + Tailwind CSS)** featuring an integrated **LLM Prompt Studio**.
 
 ---
 
-## 📁 Struktura Projektu
+## 🚀 Key Features
+
+1. **Robust Zabbix API Integration (JSON-RPC 2.0)**:
+   - Native support for **API Token authentication** (Bearer header & JSON-RPC payload auth for Zabbix 6.0+).
+   - Seamless **fallback** to `user.login` session credentials when an API token is not configured.
+   - Built-in request retries, timeout handling, and support for self-signed SSL certificates (`--insecure`).
+
+2. **Comprehensive Telemetry Extraction**:
+   - 📋 **[Host Inventory]**: Operating system, kernel version, hardware architecture, vendor, model, serial numbers, IP/MAC addresses, location, and Zabbix host tags.
+   - ⚡ **[Performance Metrics]**: CPU utilization (%), core count, RAM metrics (Total, Used, Free, Utilization % with human-readable formatting), and system uptime.
+   - 💾 **[Storage & Drives]**: Storage capacity, used/free space, and percent utilization across all filesystem volumes (C:, D:, E:, mountpoints).
+   - ⚙️ **[Windows Services]**: System service states (`Running`, `Stopped`, `Paused`), startup types (`Automatic`, `Manual`, `Disabled`), and mapping of `service.info[*]` / `services[*]` item keys.
+   - 🔮 **[Hyper-V Virtualization Telemetry]**: Detection of Hypervisor roles, guest VM enumeration, execution states, vCPU/RAM allocations, and replication telemetry.
+   - 🔌 **[Remote Probe Execution (`script.execute`)]**: Live execution of remote diagnostic commands (e.g. PowerShell `Get-NetTCPConnection` for listening ports, network sockets, or active processes) executed directly via the Zabbix Agent.
+
+3. **LLM Context Synthesis & Role Signatures**:
+   - Automated heuristic signature matching for core Windows server workloads:
+     - Active Directory Domain Controller / DNS / Kerberos
+     - Microsoft SQL Server Database Engine & Agent
+     - Internet Information Services (IIS) Web Server
+     - Hyper-V Virtualization Host
+     - Veeam Backup & Replication Repository
+     - Microsoft Exchange Server / Remote Desktop Session Host
+   - One-click export of structured JSON and AI prompt templates in standard Chat Completions format (`system` + `user` prompts).
+
+4. **Interactive Web Dashboard**:
+   - Responsive web UI built on FastAPI and Tailwind CSS.
+   - Real-time host search, hostgroup filtering, live metrics visualization, storage gauge charts, service filtering, remote probe execution, and LLM Studio.
+
+5. **Extensible Modular Architecture (OOP)**:
+   - Abstract `BaseSystemSniffer` module allows developers and AI agents to easily add new telemetry collectors (e.g., Linux, VMware ESXi, Proxmox, Network Appliances).
+
+---
+
+## 📁 Repository Structure
 
 ```text
 jass/
 ├── jass/
 │   ├── core/
-│   │   ├── client.py          # Klient JSON-RPC Zabbix 6.0+ (Token + Fallback login)
-│   │   ├── models.py          # Pydantic modele telemetryczne i JSON schema
-│   │   ├── base_module.py     # Klasa bazowa BaseSystemSniffer
-│   │   └── prompt_builder.py  # Kompilator promptów dla modeli LLM
+│   │   ├── client.py          # Zabbix 6.0+ JSON-RPC client (Token + user.login fallback)
+│   │   ├── models.py          # Pydantic data schemas & JSON serialization
+│   │   ├── base_module.py     # Base abstract class for system sniffers
+│   │   └── prompt_builder.py  # LLM prompt templates and payload compiler
 │   ├── modules/
-│   │   └── windows_sniffer.py # Dedykowany sniffer Windows & Hyper-V
+│   │   └── windows_sniffer.py # Dedicated Windows & Hyper-V sniffer module
 │   ├── analyzers/
-│   │   └── zabbix_analyzer.py # Główny orkiestrator analizy hostów i grup
+│   │   └── zabbix_analyzer.py # High-level orchestrator for host/group scanning
 │   ├── ui/
-│   │   ├── app.py             # Serwer Web Dashboard (FastAPI + Uvicorn)
+│   │   ├── app.py             # FastAPI Web Dashboard application & REST endpoints
 │   │   └── templates/
-│   │       └── index.html     # Nowoczesny Dashboard (Tailwind CSS + JS)
-│   ├── cli.py                 # Interfejs wiersza poleceń z Rich UI
+│   │       └── index.html     # Responsive Web Dashboard (Tailwind CSS + JS)
+│   ├── cli.py                 # Rich CLI command-line interface
 │   └── __init__.py
 ├── tests/
-│   ├── test_client.py         # Testy jednostkowe klienta Zabbix
-│   └── test_sniffer.py        # Testy parsowania metryk, usług i Hyper-V
-├── run.py                     # Główny punkt wejściowy aplikacji
-├── requirements.txt           # Zależności Python
-├── .env.example               # Przykładowa konfiguracja środowiskowa
+│   ├── test_client.py         # Unit tests for ZabbixClient
+│   └── test_sniffer.py        # Unit tests for WindowsSniffer & telemetry parsing
+├── run.py                     # Main application entry point (CLI & Web UI launcher)
+├── requirements.txt           # Python dependencies
+├── .env.example               # Environment variables template
+├── AGENTS.md                  # Comprehensive instructions & architecture guide for AI agents
+├── .github/
+│   └── copilot-instructions.md# GitHub Copilot agent guidelines
 └── README.md
 ```
 
 ---
 
-## 🛠️ Instalacja i Wymagania
+## 🛠️ Installation & Setup
 
-### Wymagania:
-- Python 3.10 lub nowszy
-- Dostęp do instancji Zabbix 6.0 LTS, 6.4, 7.0+ (lub 5.4+)
+### Prerequisites
+- Python 3.10 or higher
+- Access to a Zabbix Server or Proxy instance (Zabbix 6.0 LTS, 6.4, 7.0+ recommended)
 
-### Krok 1: Klonowanie / przejście do katalogu
+### 1. Clone the repository
 ```bash
-cd /home/tulonbaar/__repos/jass
+git clone https://github.com/tulonbaar/jass.git
+cd jass
 ```
 
-### Krok 2: Instalacja zależności
+### 2. Install dependencies
 ```bash
 pip install -r requirements.txt
 ```
 
-### Krok 3: Konfiguracja zmiennych środowiskowych (opcjonalnie)
-Możesz utworzyć plik `.env` na podstawie `.env.example`:
+### 3. Configure Environment Variables (Optional)
+Copy `.env.example` to `.env`:
 ```bash
 cp .env.example .env
 ```
-Wypełnij w nim dane:
+Edit `.env` with your Zabbix API credentials:
 ```env
 ZABBIX_URL=http://zabbix.corp.local/api_jsonrpc.php
-ZABBIX_API_TOKEN=twoj_zabbix_api_token
+ZABBIX_API_TOKEN=your_zabbix_api_token_here
+
+# Or fallback to username/password:
+# ZABBIX_USER=Admin
+# ZABBIX_PASSWORD=zabbix
+
+ZABBIX_TIMEOUT=15
+ZABBIX_VERIFY_SSL=true
+JASS_OUTPUT_DIR=./analysis_reports
 ```
 
 ---
 
-## 💻 Użycie CLI (Wiersz Poleceń)
+## 💻 CLI Usage
 
-### 1. Badanie pojedynczego hosta Windows:
+### 1. Analyze a Single Host:
 ```bash
-python run.py --url "http://192.168.1.100/zabbix" --token "secret_token" --host "WIN-SRV-SQL01"
+python run.py --url "http://zabbix.corp.local/zabbix" --token "secret_api_token" --host "WIN-SRV-SQL01"
 ```
-Wynik zostanie zapisany automatycznie do pliku `WIN-SRV-SQL01_analysis.json`.
+The output is automatically saved to `WIN-SRV-SQL01_analysis.json`.
 
-### 2. Badanie grupy hostów (Hostgroup):
+### 2. Analyze an Entire Hostgroup:
 ```bash
-python run.py --url "http://192.168.1.100/zabbix" --token "secret_token" --hostgroup "Windows servers" -o ./reports
-```
-
-### 3. Badanie z wykonaniem zdalnej sondy PowerShell (`script.execute`):
-```bash
-python run.py --url "http://192.168.1.100/zabbix" --token "secret_token" --host "WIN-SRV-HV01" --remote-probe
+python run.py --url "http://zabbix.corp.local/zabbix" --token "secret_api_token" --hostgroup "Windows Servers" -o ./reports
 ```
 
-### 4. Generowanie promptu dla LLM:
+### 3. Analyze with Remote Diagnostic Probe (`script.execute`):
 ```bash
-python run.py --url "http://192.168.1.100/zabbix" --token "secret_token" --host "WIN-SRV-DC01" --prompt --print-prompt
+python run.py --url "http://zabbix.corp.local/zabbix" --token "secret_api_token" --host "WIN-SRV-HV01" --remote-probe
 ```
 
-### 5. Wypisanie listy dostępnych hostów i grup:
+### 4. Generate LLM Analysis Prompt:
 ```bash
-python run.py --url "http://192.168.1.100/zabbix" --token "secret_token" --list-hosts
-python run.py --url "http://192.168.1.100/zabbix" --token "secret_token" --list-groups
+python run.py --url "http://zabbix.corp.local/zabbix" --token "secret_api_token" --host "WIN-SRV-DC01" --prompt --print-prompt
+```
+
+### 5. List Available Hosts and Hostgroups:
+```bash
+python run.py --url "http://zabbix.corp.local/zabbix" --token "secret_api_token" --list-hosts
+python run.py --url "http://zabbix.corp.local/zabbix" --token "secret_api_token" --list-groups
 ```
 
 ---
 
-## 🌐 Uruchomienie Web Dashboard (Interfejs Graficzny)
+## 🌐 Web Dashboard (GUI)
 
-Aby uruchomić interaktywny interfejs graficzny:
+Start the interactive web dashboard with:
 ```bash
 python run.py --serve --port 8080
 ```
-Następnie otwórz przeglądarkę pod adresem: **`http://localhost:8080`**
+Open your browser at: **`http://localhost:8080`**
 
-W interfejsie graficznym możesz:
-- Wprowadzić lub zmienić dane połączenia Zabbix API.
-- Przeglądać drzewo grup i wyszukiwać maszyny w czasie rzeczywistym.
-- Podglądać wskaźniki CPU, RAM, wolumenów dyskowych oraz listę usług z podziałem na Running / Stopped.
-- Badać środowiska Hyper-V z listą maszyn wirtualnych.
-- Uruchamiać sondy PowerShell jednym kliknięciem.
-- Generować i kopiować gotowe prompty dla modeli AI w zakładce **LLM Studio**.
+### Dashboard Capabilities:
+- Configure and test Zabbix API connection settings on the fly.
+- Live tree exploration of hostgroups and instant host searching.
+- Real-time gauge metrics for CPU, RAM, and disk volume utilization.
+- Interactive service status table with search and filtering (`Running`, `Stopped`).
+- Hyper-V guest virtual machine inspection.
+- Remote PowerShell network socket probe execution with single-click output.
+- **LLM Studio**: Instant generation of optimized LLM prompts with copy-to-clipboard functionality.
 
 ---
 
-## 📊 Przykładowa Struktura Pliku Wyjściowego JSON (`[host]_analysis.json`)
+## 📊 Sample Output Schema (`[host]_analysis.json`)
 
 ```json
 {
@@ -218,28 +243,28 @@ W interfejsie graficznym możesz:
   "llm_context_hints": {
     "detected_signatures": ["Microsoft SQL Server Database Engine"],
     "running_services_count": 28,
-    "total_storage_drives": 2
+    "hyperv_vms_count": 0
   }
 }
 ```
 
 ---
 
-## 🤖 Prompt dla Modeli LLM
+## 🧪 Testing
 
-Moduł `LLMPromptBuilder` zawiera wyprofilowany system prompt, który instruuje model LLM do sporządzenia profesjonalnego audytu biznesowego:
-
-1. 🎯 **Główna rola i przeznaczenie biznesowe serwera**.
-2. 🧩 **Wykryty stos technologiczny i kluczowe komponenty**.
-3. ⚡ **Ocena obciążenia i alokacji zasobów (Capacity & Sizing)**.
-4. 🛡️ **Wnioski dotyczące bezpieczeństwa i konfiguracji**.
-5. 💡 **Rekomendacje architektoniczne i optymalizacyjne**.
+Run the full test suite using Python's built-in `unittest` framework:
+```bash
+python -m unittest discover -s tests -v
+```
 
 ---
 
-## 🧩 Rozszerzalność (Nowe Moduły i Systemy)
+## 🤖 Instructions for AI Agents
 
-Architektura oparta o `BaseSystemSniffer` pozwala na dodanie kolejnego systemu w 3 prostych krokach:
-1. Utwórz plik w `jass/modules/linux_sniffer.py`.
-2. Zaimplementuj klasę dziedziczącą po `BaseSystemSniffer`.
-3. Zarejestruj sniffer w `ZabbixAnalyzer`.
+Detailed architecture documentation, development guidelines, schema definitions, and module extension patterns for AI agents (GitHub Copilot, Claude, Cursor, Devin, etc.) are available in [AGENTS.md](./AGENTS.md) and [.github/copilot-instructions.md](./.github/copilot-instructions.md).
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License.

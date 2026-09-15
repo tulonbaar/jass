@@ -1,6 +1,6 @@
 """
 JASS - Just Another System Sniffer
-Klasa bazowa dla modułów sniffera (ekspandowalność na inne systemy)
+Base abstract class for system sniffer modules (extensible to other platforms)
 """
 
 from __future__ import annotations
@@ -20,8 +20,8 @@ from jass.core.models import (
 
 class BaseSystemSniffer(ABC):
     """
-    Abstrakcyjna klasa bazowa dla modułów zbierających dane systemowe.
-    Pozwala na łatwe dodawanie kolejnych systemów (np. Linux, VMware ESXi, Network Appliances).
+    Abstract base class for system sniffer modules.
+    Allows easy extension for additional platforms (e.g., Linux, VMware ESXi, Network Appliances).
     """
 
     def __init__(self, client: ZabbixClient) -> None:
@@ -30,41 +30,41 @@ class BaseSystemSniffer(ABC):
     @property
     @abstractmethod
     def module_name(self) -> str:
-        """Nazwa modułu sniffera."""
+        """Name of the sniffer module."""
         pass
 
     @property
     @abstractmethod
     def target_platform(self) -> str:
-        """Docelowa platforma (np. 'Windows', 'Linux', 'Network')."""
+        """Target platform (e.g. 'Windows', 'Linux', 'Network')."""
         pass
 
     @abstractmethod
     def collect_inventory(self, host_id: str, host_raw: Dict[str, Any]) -> HostInventory:
-        """Pobranie i przetworzenie sekcji Host Inventory."""
+        """Retrieve and process Host Inventory section."""
         pass
 
     @abstractmethod
     def collect_metrics(self, host_id: str) -> HostMetrics:
-        """Pobranie i przetworzenie kluczowych metryk (CPU, RAM, Dysk, Uptime)."""
+        """Retrieve and process key performance metrics (CPU, RAM, Disks, Uptime)."""
         pass
 
     @abstractmethod
     def collect_services(self, host_id: str) -> List[WindowsService]:
-        """Pobranie statusów usług systemowych."""
+        """Retrieve system service statuses."""
         pass
 
     @abstractmethod
     def collect_virtualization_data(self, host_id: str) -> HyperVData:
-        """Pobranie danych o wirtualizacji (np. Hyper-V)."""
+        """Retrieve virtualization telemetry (e.g. Hyper-V)."""
         pass
 
     @abstractmethod
     def execute_remote_probe(self, host_id: str, script_name_or_cmd: Optional[str] = None) -> Optional[RemoteExecutionResult]:
-        """Wykonanie zdalnego skryptu/sondy na agencie przez Zabbix API."""
+        """Execute remote probe/script on agent via Zabbix API."""
         pass
 
     @abstractmethod
     def analyze_host(self, host_identifier: str, run_remote_probe: bool = False) -> HostAnalysisPayload:
-        """Przeprowadzenie pełnego badania hosta i wygenerowanie ustrukturyzowanego payloadu."""
+        """Perform complete host audit and generate structured payload."""
         pass

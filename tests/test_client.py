@@ -1,5 +1,5 @@
 """
-Testy jednostkowe dla klienta ZabbixClient (JSON-RPC)
+Unit tests for ZabbixClient (JSON-RPC).
 """
 
 import unittest
@@ -27,7 +27,7 @@ class TestZabbixClient(unittest.TestCase):
 
     @patch.object(requests.Session, "post")
     def test_connect_with_api_token(self, mock_post):
-        # Mockowanie apiinfo.version i testowego user.get
+        # Mock apiinfo.version and test user.get
         mock_version_resp = MagicMock()
         mock_version_resp.json.return_value = {"jsonrpc": "2.0", "result": "6.4.12", "id": 1}
         mock_version_resp.raise_for_status.return_value = None
@@ -59,7 +59,7 @@ class TestZabbixClient(unittest.TestCase):
 
         mock_post.side_effect = [mock_version_resp, mock_login_resp]
 
-        client = ZabbixClient(url="http://zabbix.local", username="Admin", password="Password123")
+        client = ZabbixClient(url="http://zabbix.local", username="Admin", password="sample_password")
         version = client.connect()
 
         self.assertEqual(version, "6.0.0")
