@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="pl" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JASS - Just Another System Sniffer</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            900: '#14532d',
+                        },
+                        darkbg: '#0f172a',
+                        darkcard: '#1e293b',
+                        darkborder: '#334155'
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #0f172a; }
+        ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #475569; }
+        .tab-active { border-bottom: 2px solid #22c55e; color: #22c55e; font-weight: 600; }
+    </style>
+</head>
+<body class="bg-darkbg text-slate-100 min-h-screen flex flex-col font-sans">
+
+    <!-- Navbar -->
+    <header class="bg-darkcard border-b border-darkborder px-6 py-3.5 flex items-center justify-between sticky top-0 z-50">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-600 to-emerald-400 flex items-center justify-center text-white shadow-lg shadow-brand-500/20">
+                <i class="fa-solid fa-radar text-xl"></i>
+            </div>
+            <div>
+                <div class="flex items-center space-x-2">
+                    <h1 class="font-bold text-lg tracking-wider text-white">JASS</h1>
+                    <span class="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono">v1.0.0</span>
+                </div>
+                <p class="text-xs text-slate-400">Just Another System Sniffer • Windows & Hyper-V Telemetry for LLM</p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-4">
+            <!-- Connection Status Badge -->
+            <div id="conn-badge" class="flex items-center space-x-2 text-xs bg-slate-900 border border-darkborder px-3 py-1.5 rounded-lg">
+                <span id="conn-indicator" class="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse"></span>
+                <span id="conn-text" class="text-slate-300">Rozłączono</span>
+            </div>
+
+            <!-- Settings Modal Button -->
+            <button onclick="openSettingsModal()" class="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-darkborder rounded-lg transition flex items-center space-x-1.5">
+                <i class="fa-solid fa-gear text-slate-400"></i>
+                <span>Ustawienia Zabbix API</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- Main Content Grid -->
+    <div class="flex-1 flex overflow-hidden">
+        
+        <!-- Sidebar: Host Explorer -->
+        <aside class="w-80 bg-darkcard/50 border-r border-darkborder flex flex-col h-[calc(100vh-61px)]">
+            <!-- Search & Filter -->
+            <div class="p-4 border-b border-darkborder space-y-3">
+                <div class="relative">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                    <input type="text" id="host-search" oninput="filterHosts()" placeholder="Szukaj hosta (nazwa, IP)..." 
+                        class="w-full bg-slate-900 border border-darkborder rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
+                </div>
+
+                <!-- Group Selector -->
+                <div>
+                    <label class="block text-[11px] font-medium text-slate-400 mb-1">Grupa Zabbix:</label>
+                    <select id="group-select" onchange="loadHosts()" 
+                        class="w-full bg-slate-900 border border-darkborder rounded-lg px-2.5 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
+                        <option value="">-- Wszystkie grupy --</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Host List Header -->
+            <div class="px-4 py-2 bg-slate-900/40 border-b border-darkborder flex items-center justify-between text-xs text-slate-400">
+                <span>Dostępne Hosty (<span id="hosts-count">0</span>)</span>
+                <button onclick="loadHosts()" title="Odśwież listę" class="hover:text-brand-400 transition">
+                    <i class="fa-solid fa-rotate-right"></i>
+                </button>
+            </div>
+
+            <!-- Host List Items -->
+            <div id="host-list" class="flex-1 overflow-y-auto divide-y divide-darkborder/40 p-2 space-y-1">
+                <div class="text-center text-xs text-slate-500 py-8">Ładowanie hostów...</div>
+            </div>
+        </aside>
+
+        <!-- Main View Area -->
+        <main class="flex-1 flex flex-col h-[calc(100vh-61px)] overflow-y-auto bg-darkbg p-6">
+            
+            <!-- Welcome / Empty State -->
+            <div id="empty-state" class="flex-1 flex flex-col items-center justify-center text-center p-8">
+                <div class="w-20 h-20 rounded-2xl bg-slate-800/80 border border-darkborder flex items-center justify-center text-brand-500 mb-4 shadow-xl">
+                    <i class="fa-solid fa-server text-3xl"></i>
+                </div>
+                <h2 class="text-xl font-bold text-white mb-2">Wybierz serwer do przeprowadzenia analizy</h2>
+                <p class="text-slate-400 text-sm max-w-md mb-6">
+                    Wybierz maszynę z listy po lewej stronie, aby pobrać telemetrię, inwentarz, usługi, metryki Hyper-V oraz wygenerować wsad dla modelu LLM.
+                </p>
+                <button onclick="openSettingsModal()" class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-lg shadow-lg shadow-brand-600/30 transition flex items-center space-x-2">
+                    <i class="fa-solid fa-plug"></i>
+                    <span>Skonfiguruj połączenie Zabbix</span>
+                </button>
+            </div>
+
+            <!-- Host Details & Telemetry View -->
+            <div id="host-view" class="hidden space-y-6">
+                
+                <!-- Hero Host Header -->
+                <div class="bg-darkcard border border-darkborder rounded-2xl p-6 shadow-xl relative overflow-hidden">
+                    <div class="absolute right-0 top-0 w-96 h-96 bg-brand-500/5 rounded-full blur-3xl -mr-20 -mt-20 pointer-events-none"></div>
+
+                    <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                        <div>
+                            <div class="flex items-center space-x-3 mb-1">
+                                <h2 id="host-header-name" class="text-2xl font-black text-white tracking-wide">HOST-NAME</h2>
+                                <span id="host-header-status" class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Monitored</span>
+                                <span id="host-header-hyperv" class="hidden px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                                    <i class="fa-solid fa-cubes mr-1"></i>Hyper-V Host
+                                </span>
+                            </div>
+                            <p id="host-header-os" class="text-sm text-slate-300 flex items-center space-x-2">
+                                <i class="fa-brands fa-windows text-blue-400"></i>
+                                <span>Microsoft Windows Server</span>
+                            </p>
+                            <div id="host-header-ips" class="text-xs text-slate-400 mt-2 flex flex-wrap gap-2"></div>
+                        </div>
+
+                        <!-- Action Toolbar -->
+                        <div class="flex flex-wrap items-center gap-2.5">
+                            <button onclick="triggerRemoteProbe()" id="btn-remote-probe" class="px-3.5 py-2 bg-purple-600/80 hover:bg-purple-600 text-white text-xs font-medium rounded-xl border border-purple-500/30 transition shadow-lg shadow-purple-600/20 flex items-center space-x-2">
+                                <i class="fa-solid fa-terminal"></i>
+                                <span>Sonda PowerShell (script.execute)</span>
+                            </button>
+
+                            <button onclick="rescanCurrentHost()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl border border-darkborder transition flex items-center space-x-2">
+                                <i class="fa-solid fa-arrows-rotate"></i>
+                                <span>Przeładuj Telemetrię</span>
+                            </button>
+
+                            <button onclick="saveAnalysisToDisk()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl border border-darkborder transition flex items-center space-x-2">
+                                <i class="fa-solid fa-floppy-disk"></i>
+                                <span>Zapisz JSON</span>
+                            </button>
+
+                            <button onclick="switchTab('tab-llm')" class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-brand-500/30 transition flex items-center space-x-2">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i>
+                                <span>LLM Analysis Studio</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Quick Metric Stat Cards -->
+                    <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mt-6 pt-6 border-t border-darkborder/60">
+                        <!-- CPU -->
+                        <div class="bg-slate-900/60 border border-darkborder rounded-xl p-3.5">
+                            <span class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold block mb-1">CPU Load</span>
+                            <div class="flex items-baseline space-x-2">
+                                <span id="stat-cpu-val" class="text-xl font-bold text-white">--%</span>
+                                <span id="stat-cpu-cores" class="text-xs text-slate-400">(-- cores)</span>
+                            </div>
+                            <div class="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                                <div id="stat-cpu-bar" class="bg-brand-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <!-- RAM -->
+                        <div class="bg-slate-900/60 border border-darkborder rounded-xl p-3.5">
+                            <span class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold block mb-1">RAM Pamięć</span>
+                            <div class="flex items-baseline space-x-2">
+                                <span id="stat-ram-pct" class="text-xl font-bold text-white">--%</span>
+                                <span id="stat-ram-used" class="text-xs text-slate-400">-- / --</span>
+                            </div>
+                            <div class="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                                <div id="stat-ram-bar" class="bg-blue-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Storage -->
+                        <div class="bg-slate-900/60 border border-darkborder rounded-xl p-3.5">
+                            <span class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold block mb-1">Główny Dysk (C:)</span>
+                            <div class="flex items-baseline space-x-2">
+                                <span id="stat-disk-pct" class="text-xl font-bold text-white">--%</span>
+                                <span id="stat-disk-free" class="text-xs text-slate-400">-- wolne</span>
+                            </div>
+                            <div class="w-full bg-slate-800 h-1.5 rounded-full mt-2 overflow-hidden">
+                                <div id="stat-disk-bar" class="bg-amber-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                            </div>
+                        </div>
+
+                        <!-- Services -->
+                        <div class="bg-slate-900/60 border border-darkborder rounded-xl p-3.5">
+                            <span class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold block mb-1">Usługi Windows</span>
+                            <div class="flex items-baseline space-x-2">
+                                <span id="stat-services-val" class="text-xl font-bold text-emerald-400">0</span>
+                                <span class="text-xs text-slate-400">uruchomionych</span>
+                            </div>
+                            <span id="stat-services-sub" class="text-[10px] text-slate-500 mt-2 block">monitorowanych</span>
+                        </div>
+
+                        <!-- Uptime -->
+                        <div class="bg-slate-900/60 border border-darkborder rounded-xl p-3.5">
+                            <span class="text-[11px] uppercase tracking-wider text-slate-400 font-semibold block mb-1">Uptime</span>
+                            <span id="stat-uptime-val" class="text-sm font-bold text-slate-200 block truncate">--</span>
+                            <span class="text-[10px] text-slate-500 mt-1 block">czas od restartu</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Navigation Tabs -->
+                <div class="border-b border-darkborder flex space-x-6 text-sm">
+                    <button onclick="switchTab('tab-overview')" id="btn-tab-overview" class="pb-3 text-slate-400 hover:text-slate-200 transition tab-active">
+                        <i class="fa-solid fa-chart-pie mr-1.5"></i>Przegląd & Dyski
+                    </button>
+                    <button onclick="switchTab('tab-services')" id="btn-tab-services" class="pb-3 text-slate-400 hover:text-slate-200 transition">
+                        <i class="fa-solid fa-list-check mr-1.5"></i>Usługi Windows (<span id="badge-svc-count">0</span>)
+                    </button>
+                    <button onclick="switchTab('tab-hyperv')" id="btn-tab-hyperv" class="pb-3 text-slate-400 hover:text-slate-200 transition">
+                        <i class="fa-solid fa-cubes mr-1.5"></i>Hyper-V Telemetria (<span id="badge-vm-count">0</span>)
+                    </button>
+                    <button onclick="switchTab('tab-inventory')" id="btn-tab-inventory" class="pb-3 text-slate-400 hover:text-slate-200 transition">
+                        <i class="fa-solid fa-id-card mr-1.5"></i>Inwentarz & Tagi
+                    </button>
+                    <button onclick="switchTab('tab-remote')" id="btn-tab-remote" class="pb-3 text-slate-400 hover:text-slate-200 transition">
+                        <i class="fa-solid fa-terminal mr-1.5"></i>Zdalna Sonda (Porty)
+                    </button>
+                    <button onclick="switchTab('tab-llm')" id="btn-tab-llm" class="pb-3 text-slate-400 hover:text-slate-200 transition font-bold text-brand-400">
+                        <i class="fa-solid fa-brain mr-1.5"></i>LLM Studio
+                    </button>
+                </div>
+
+                <!-- Tab 1: Overview & Storage -->
+                <div id="tab-overview" class="tab-pane space-y-6">
+                    <!-- Detected Roles Banner -->
+                    <div id="detected-roles-box" class="bg-emerald-950/30 border border-emerald-500/30 rounded-xl p-4">
+                        <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center space-x-2 mb-2">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i>
+                            <span>Wykryte Sygnatury Ról & Aplikacji (Dla LLM)</span>
+                        </h4>
+                        <div id="detected-roles-list" class="flex flex-wrap gap-2"></div>
+                    </div>
+
+                    <!-- Storage Volumes Grid -->
+                    <div class="bg-darkcard border border-darkborder rounded-xl p-5">
+                        <h3 class="text-sm font-bold text-white mb-4 flex items-center space-x-2">
+                            <i class="fa-solid fa-hard-drive text-amber-400"></i>
+                            <span>Pojemność i Zajętość Dysków / Wolumenów</span>
+                        </h3>
+                        <div id="drives-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+                    </div>
+                </div>
+
+                <!-- Tab 2: Windows Services -->
+                <div id="tab-services" class="tab-pane hidden space-y-4">
+                    <div class="bg-darkcard border border-darkborder rounded-xl p-4 flex items-center justify-between">
+                        <div class="relative w-72">
+                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
+                            <input type="text" id="svc-filter" oninput="filterServicesTable()" placeholder="Filtruj usługi..." 
+                                class="w-full bg-slate-900 border border-darkborder rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
+                        </div>
+                        <div class="flex items-center space-x-2 text-xs text-slate-400">
+                            <span>Status:</span>
+                            <button onclick="setServiceFilter('all')" class="px-2.5 py-1 bg-slate-800 rounded hover:bg-slate-700 text-white text-[11px]">Wszystkie</button>
+                            <button onclick="setServiceFilter('Running')" class="px-2.5 py-1 bg-emerald-900/50 text-emerald-300 border border-emerald-700 rounded text-[11px]">Uruchomione</button>
+                            <button onclick="setServiceFilter('Stopped')" class="px-2.5 py-1 bg-red-900/50 text-red-300 border border-red-700 rounded text-[11px]">Zatrzymane</button>
+                        </div>
+                    </div>
+
+                    <div class="bg-darkcard border border-darkborder rounded-xl overflow-hidden">
+                        <table class="w-full text-left text-xs">
+                            <thead class="bg-slate-900 text-slate-400 border-b border-darkborder">
+                                <tr>
+                                    <th class="p-3">Nazwa Usługi</th>
+                                    <th class="p-3">Nazwa Wyświetlana</th>
+                                    <th class="p-3">Status</th>
+                                    <th class="p-3">Typ Uruchomienia</th>
+                                    <th class="p-3">Klucz Zabbix</th>
+                                </tr>
+                            </thead>
+                            <tbody id="services-table-body" class="divide-y divide-darkborder/50 text-slate-300"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Tab 3: Hyper-V -->
+                <div id="tab-hyperv" class="tab-pane hidden space-y-4">
+                    <div id="hyperv-warning" class="bg-slate-800 border border-darkborder rounded-xl p-6 text-center text-slate-400">
+                        Brak aktywnych metryk Hyper-V dla tego hosta.
+                    </div>
+                    <div id="hyperv-content" class="hidden space-y-4">
+                        <div class="bg-darkcard border border-darkborder rounded-xl p-5">
+                            <h3 class="text-sm font-bold text-white mb-3 flex items-center space-x-2">
+                                <i class="fa-solid fa-server text-purple-400"></i>
+                                <span>Zwirtualizowane Maszyny Goście (Hyper-V Guest VMs)</span>
+                            </h3>
+                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="hyperv-vms-grid"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 4: Inventory & Tags -->
+                <div id="tab-inventory" class="tab-pane hidden space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-3">
+                            <h3 class="text-sm font-bold text-white mb-2 flex items-center space-x-2">
+                                <i class="fa-solid fa-microchip text-cyan-400"></i>
+                                <span>Informacje Sprzętowe i Systemowe</span>
+                            </h3>
+                            <div class="text-xs space-y-2 text-slate-300" id="inv-hardware-list"></div>
+                        </div>
+
+                        <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-3">
+                            <h3 class="text-sm font-bold text-white mb-2 flex items-center space-x-2">
+                                <i class="fa-solid fa-tags text-emerald-400"></i>
+                                <span>Tagi Hosta (Zabbix Tags)</span>
+                            </h3>
+                            <div id="inv-tags-list" class="flex flex-wrap gap-2"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 5: Remote Execution -->
+                <div id="tab-remote" class="tab-pane hidden space-y-4">
+                    <div class="bg-darkcard border border-darkborder rounded-xl p-5">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-sm font-bold text-white flex items-center space-x-2">
+                                <i class="fa-solid fa-network-wired text-purple-400"></i>
+                                <span>Wyniki Zdalnego Wykonania (script.execute / PowerShell)</span>
+                            </h3>
+                            <button onclick="triggerRemoteProbe()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold">
+                                Wykonaj Sondę Teraz
+                            </button>
+                        </div>
+                        <div id="remote-probe-container" class="space-y-4">
+                            <div class="bg-slate-950 font-mono text-xs text-emerald-400 p-4 rounded-xl border border-darkborder overflow-x-auto max-h-96" id="remote-probe-raw">
+                                Brak wyników zdalnej sondy. Uruchom sondę przyciskiem powyżej.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 6: LLM Studio -->
+                <div id="tab-llm" class="tab-pane hidden space-y-6">
+                    <div class="bg-gradient-to-r from-emerald-950/40 via-darkcard to-purple-950/40 border border-brand-500/30 rounded-2xl p-6">
+                        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                            <div>
+                                <h3 class="text-lg font-bold text-white flex items-center space-x-2">
+                                    <i class="fa-solid fa-sparkles text-brand-400"></i>
+                                    <span>LLM Analysis Prompt Generator</span>
+                                </h3>
+                                <p class="text-xs text-slate-400">Skopiuj gotowy wsad telemetryczny i wklej do ChatGPT (GPT-4o), Claude 3.5 Sonnet lub lokalnego modelu Ollama.</p>
+                            </div>
+                            <div class="flex items-center space-x-3">
+                                <button onclick="copyToClipboard('llm-user-prompt-text')" class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-brand-500/20 transition flex items-center space-x-2">
+                                    <i class="fa-solid fa-copy"></i>
+                                    <span>Skopiuj Prompt do Schowka</span>
+                                </button>
+                                <button onclick="downloadFullJson()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl border border-darkborder transition flex items-center space-x-1.5">
+                                    <i class="fa-solid fa-download"></i>
+                                    <span>Pobierz .JSON</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Prompt View -->
+                        <div class="space-y-3">
+                            <label class="block text-xs font-semibold text-slate-300">Prompt dla Użytkownika (z osadzonym JSON):</label>
+                            <div class="relative">
+                                <pre id="llm-user-prompt-text" class="bg-slate-950 font-mono text-xs text-slate-300 p-4 rounded-xl border border-darkborder max-h-96 overflow-y-auto whitespace-pre-wrap"></pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal: Settings Zabbix API -->
+    <div id="settings-modal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+        <div class="bg-darkcard border border-darkborder rounded-2xl w-full max-w-lg p-6 shadow-2xl space-y-4">
+            <div class="flex items-center justify-between border-b border-darkborder pb-3">
+                <h3 class="text-base font-bold text-white flex items-center space-x-2">
+                    <i class="fa-solid fa-server text-brand-500"></i>
+                    <span>Konfiguracja Zabbix API</span>
+                </h3>
+                <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="space-y-3 text-xs">
+                <div>
+                    <label class="block text-slate-300 font-medium mb-1">Adres URL Zabbix API:</label>
+                    <input type="text" id="cfg-url" placeholder="http://zabbix.local/api_jsonrpc.php" 
+                        class="w-full bg-slate-900 border border-darkborder rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-brand-500">
+                </div>
+
+                <div>
+                    <label class="block text-slate-300 font-medium mb-1">API Token (Zalecany dla Zabbix 6.0+):</label>
+                    <input type="password" id="cfg-token" placeholder="Bearer Token..." 
+                        class="w-full bg-slate-900 border border-darkborder rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-brand-500">
+                </div>
+
+                <div class="pt-2 border-t border-darkborder/50">
+                    <span class="text-slate-500 font-semibold block mb-2">Lub tradycyjne logowanie (Fallback user.login):</span>
+                    <div class="grid grid-cols-2 gap-3">
+                        <div>
+                            <label class="block text-slate-400 mb-1">Użytkownik:</label>
+                            <input type="text" id="cfg-user" placeholder="Admin" 
+                                class="w-full bg-slate-900 border border-darkborder rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-brand-500">
+                        </div>
+                        <div>
+                            <label class="block text-slate-400 mb-1">Hasło:</label>
+                            <input type="password" id="cfg-pass" placeholder="••••••••" 
+                                class="w-full bg-slate-900 border border-darkborder rounded-lg px-3 py-2 text-slate-200 focus:outline-none focus:border-brand-500">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex items-center space-x-2 pt-2">
+                    <input type="checkbox" id="cfg-verify-ssl" checked class="rounded bg-slate-900 border-darkborder text-brand-600 focus:ring-0">
+                    <label for="cfg-verify-ssl" class="text-slate-400">Weryfikuj certyfikat SSL (odznacz dla self-signed)</label>
+                </div>
+            </div>
+
+            <div id="cfg-status-msg" class="text-xs p-2.5 rounded-lg hidden"></div>
+
+            <div class="flex items-center justify-end space-x-3 pt-3 border-t border-darkborder">
+                <button onclick="closeSettingsModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs rounded-lg">Anuluj</button>
+                <button onclick="saveAndConnectZabbix()" id="btn-save-conn" class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs rounded-lg flex items-center space-x-1.5 shadow-lg shadow-brand-500/20">
+                    <i class="fa-solid fa-plug"></i>
+                    <span>Połącz z Zabbix</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="fixed bottom-6 right-6 z-50 hidden px-4 py-3 rounded-xl bg-darkcard border border-brand-500/40 text-xs text-white shadow-2xl flex items-center space-x-3">
+        <i id="toast-icon" class="fa-solid fa-circle-check text-brand-400 text-base"></i>
+        <span id="toast-msg">Powiadomienie</span>
+    </div>
+
+    <!-- App JavaScript Logic -->
+    <script>
+        let currentPayload = null;
+        let allHosts = [];
+        let allServices = [];
+        let currentServiceFilter = 'all';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            checkConnectionStatus();
+            loadGroups();
+            loadHosts();
+        });
+
+        function showToast(msg, isError = false) {
+            const toast = document.getElementById('toast');
+            const icon = document.getElementById('toast-icon');
+            const text = document.getElementById('toast-msg');
+            text.innerText = msg;
+            icon.className = isError ? 'fa-solid fa-circle-exclamation text-red-400 text-base' : 'fa-solid fa-circle-check text-brand-400 text-base';
+            toast.className = `fixed bottom-6 right-6 z-50 px-4 py-3 rounded-xl bg-darkcard border ${isError ? 'border-red-500/50 text-red-200' : 'border-brand-500/50 text-white'} shadow-2xl flex items-center space-x-3`;
+            toast.classList.remove('hidden');
+            setTimeout(() => toast.classList.add('hidden'), 4000);
+        }
+
+        async function checkConnectionStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                const indicator = document.getElementById('conn-indicator');
+                const text = document.getElementById('conn-text');
+                
+                if (data.connected) {
+                    indicator.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400 shadow-sm shadow-emerald-400';
+                    text.innerHTML = `<span class="text-emerald-400 font-semibold">Połączono</span> (Zabbix v${data.zabbix_version || '6.x'})`;
+                } else {
+                    indicator.className = 'w-2.5 h-2.5 rounded-full bg-amber-500';
+                    text.innerHTML = '<span class="text-amber-400">Brak aktywnego połączenia</span>';
+                }
+
+                if (data.zabbix_url) document.getElementById('cfg-url').value = data.zabbix_url;
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        function openSettingsModal() {
+            document.getElementById('settings-modal').classList.remove('hidden');
+        }
+
+        function closeSettingsModal() {
+            document.getElementById('settings-modal').classList.add('hidden');
+        }
+
+        async function saveAndConnectZabbix() {
+            const url = document.getElementById('cfg-url').value;
+            const token = document.getElementById('cfg-token').value;
+            const user = document.getElementById('cfg-user').value;
+            const pass = document.getElementById('cfg-pass').value;
+            const verify_ssl = document.getElementById('cfg-verify-ssl').checked;
+            const msgBox = document.getElementById('cfg-status-msg');
+
+            msgBox.className = 'text-xs p-2.5 rounded-lg bg-blue-900/40 text-blue-300 border border-blue-700';
+            msgBox.innerText = 'Łączenie i testowanie uprawnień...';
+            msgBox.classList.remove('hidden');
+
+            try {
+                const res = await fetch('/api/connect', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ url, token, username: user, password: pass, verify_ssl })
+                });
+                const data = await res.json();
+
+                if (res.ok && data.success) {
+                    msgBox.className = 'text-xs p-2.5 rounded-lg bg-emerald-900/40 text-emerald-300 border border-emerald-700';
+                    msgBox.innerText = data.message;
+                    setTimeout(() => {
+                        closeSettingsModal();
+                        checkConnectionStatus();
+                        loadGroups();
+                        loadHosts();
+                    }, 1000);
+                } else {
+                    msgBox.className = 'text-xs p-2.5 rounded-lg bg-red-900/40 text-red-300 border border-red-700';
+                    msgBox.innerText = data.detail || 'Błąd połączenia z Zabbix API.';
+                }
+            } catch (e) {
+                msgBox.className = 'text-xs p-2.5 rounded-lg bg-red-900/40 text-red-300 border border-red-700';
+                msgBox.innerText = 'Błąd sieci: ' + e.message;
+            }
+        }
+
+        async function loadGroups() {
+            try {
+                const res = await fetch('/api/groups');
+                if (!res.ok) return;
+                const data = await res.json();
+                const sel = document.getElementById('group-select');
+                sel.innerHTML = '<option value="">-- Wszystkie grupy --</option>';
+                data.groups.forEach(g => {
+                    const opt = document.createElement('option');
+                    opt.value = g.groupid;
+                    opt.innerText = g.name;
+                    sel.appendChild(opt);
+                });
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function loadHosts() {
+            const group_id = document.getElementById('group-select').value;
+            const listEl = document.getElementById('host-list');
+            listEl.innerHTML = '<div class="text-center text-xs text-slate-400 py-6"><i class="fa-solid fa-spinner fa-spin mr-2"></i>Pobieranie hostów...</div>';
+
+            try {
+                const url = group_id ? `/api/hosts?group_id=${group_id}` : '/api/hosts';
+                const res = await fetch(url);
+                if (!res.ok) {
+                    listEl.innerHTML = '<div class="text-center text-xs text-red-400 py-6">Błąd pobierania hostów. Sprawdź połączenie z Zabbix API.</div>';
+                    return;
+                }
+                const data = await res.json();
+                allHosts = data.hosts || [];
+                document.getElementById('hosts-count').innerText = allHosts.length;
+                renderHostsList(allHosts);
+            } catch (e) {
+                listEl.innerHTML = `<div class="text-center text-xs text-red-400 py-6">Błąd: ${e.message}</div>`;
+            }
+        }
+
+        function renderHostsList(hosts) {
+            const listEl = document.getElementById('host-list');
+            listEl.innerHTML = '';
+
+            if (hosts.length === 0) {
+                listEl.innerHTML = '<div class="text-center text-xs text-slate-500 py-6">Brak hostów do wyświetlenia</div>';
+                return;
+            }
+
+            hosts.forEach(h => {
+                const ips = (h.interfaces || []).map(i => i.ip).filter(Boolean).join(', ') || 'Brak IP';
+                const isMonitored = String(h.status) === '0';
+                
+                const item = document.createElement('div');
+                item.className = 'p-3 rounded-xl bg-slate-900/40 hover:bg-slate-800/80 border border-transparent hover:border-darkborder cursor-pointer transition group';
+                item.onclick = () => selectAndAnalyzeHost(h.host || h.hostid);
+
+                item.innerHTML = `
+                    <div class="flex items-start justify-between">
+                        <div class="truncate">
+                            <span class="text-xs font-bold text-slate-200 group-hover:text-brand-400 transition block truncate">${h.name || h.host}</span>
+                            <span class="text-[10px] text-slate-400 font-mono">${ips}</span>
+                        </div>
+                        <span class="w-2 h-2 rounded-full ${isMonitored ? 'bg-emerald-500' : 'bg-slate-600'} flex-shrink-0 mt-1"></span>
+                    </div>
+                `;
+                listEl.appendChild(item);
+            });
+        }
+
+        function filterHosts() {
+            const q = document.getElementById('host-search').value.toLowerCase();
+            const filtered = allHosts.filter(h => 
+                (h.host && h.host.toLowerCase().includes(q)) ||
+                (h.name && h.name.toLowerCase().includes(q)) ||
+                (h.interfaces && h.interfaces.some(i => i.ip && i.ip.includes(q)))
+            );
+            renderHostsList(filtered);
+        }
+
+        async function selectAndAnalyzeHost(hostIdentifier, runRemote = false) {
+            showToast(`Analizowanie hosta '${hostIdentifier}'...`);
+            document.getElementById('empty-state').classList.add('hidden');
+            document.getElementById('host-view').classList.remove('hidden');
+
+            try {
+                const res = await fetch('/api/analyze/host', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ host_identifier: hostIdentifier, run_remote_probe: runRemote })
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    showToast(`Błąd analizy: ${err.detail || 'Nieznany błąd'}`, true);
+                    return;
+                }
+
+                const data = await res.json();
+                currentPayload = data.payload;
+                renderHostDashboard(currentPayload, data.llm_prompt);
+                showToast(`Zakończono analizę hosta ${currentPayload.host_name}.`);
+            } catch (e) {
+                showToast(`Błąd: ${e.message}`, true);
+            }
+        }
+
+        function rescanCurrentHost() {
+            if (currentPayload) selectAndAnalyzeHost(currentPayload.host_name, false);
+        }
+
+        function triggerRemoteProbe() {
+            if (currentPayload) selectAndAnalyzeHost(currentPayload.host_name, true);
+        }
+
+        function renderHostDashboard(p, llmPrompt) {
+            // Header
+            document.getElementById('host-header-name').innerText = p.host_name;
+            document.getElementById('host-header-status').innerText = p.status;
+            document.getElementById('host-header-status').className = p.status === 'Monitored' 
+                ? 'px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+                : 'px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-500/20 text-red-400 border border-red-500/30';
+            
+            const isHyperV = p.hyperv && p.hyperv.is_hyperv_host;
+            document.getElementById('host-header-hyperv').classList.toggle('hidden', !isHyperV);
+
+            const osText = p.inventory.os || p.inventory.os_full || 'Microsoft Windows';
+            document.getElementById('host-header-os').innerHTML = `<i class="fa-brands fa-windows text-blue-400"></i><span>${osText}</span>`;
+
+            const ipsEl = document.getElementById('host-header-ips');
+            ipsEl.innerHTML = (p.inventory.ip_addresses || []).map(ip => `<span class="bg-slate-800 px-2 py-0.5 rounded border border-darkborder">${ip}</span>`).join('');
+
+            // Stat cards
+            const cpuVal = p.metrics.cpu_utilization_percent;
+            document.getElementById('stat-cpu-val').innerText = cpuVal !== null ? `${cpuVal}%` : 'N/A';
+            document.getElementById('stat-cpu-cores').innerText = p.metrics.cpu_cores ? `(${p.metrics.cpu_cores} cores)` : '';
+            document.getElementById('stat-cpu-bar').style.width = `${Math.min(cpuVal || 0, 100)}%`;
+
+            const ramPct = p.metrics.memory_utilization_percent;
+            document.getElementById('stat-ram-pct').innerText = ramPct !== null ? `${ramPct}%` : 'N/A';
+            document.getElementById('stat-ram-used').innerText = `${p.metrics.memory_used_formatted || '?'} / ${p.metrics.memory_total_formatted || '?'}`;
+            document.getElementById('stat-ram-bar').style.width = `${Math.min(ramPct || 0, 100)}%`;
+
+            const cDrive = (p.metrics.drives || []).find(d => d.fs_name.startsWith('C')) || (p.metrics.drives || [])[0];
+            if (cDrive) {
+                document.getElementById('stat-disk-pct').innerText = cDrive.used_percent !== null ? `${cDrive.used_percent}%` : 'N/A';
+                document.getElementById('stat-disk-free').innerText = `${cDrive.free_formatted || '?'} wolne`;
+                document.getElementById('stat-disk-bar').style.width = `${Math.min(cDrive.used_percent || 0, 100)}%`;
+            } else {
+                document.getElementById('stat-disk-pct').innerText = 'N/A';
+                document.getElementById('stat-disk-free').innerText = '--';
+            }
+
+            const runningCount = (p.windows_services || []).filter(s => s.state === 'Running').length;
+            document.getElementById('stat-services-val').innerText = runningCount;
+            document.getElementById('badge-svc-count').innerText = (p.windows_services || []).length;
+            document.getElementById('stat-uptime-val').innerText = p.metrics.uptime_formatted || 'N/A';
+
+            // Detected Roles
+            const roles = p.llm_context_hints.detected_signatures || [];
+            const rolesContainer = document.getElementById('detected-roles-list');
+            rolesContainer.innerHTML = '';
+            if (roles.length > 0) {
+                roles.forEach(r => {
+                    const tag = document.createElement('span');
+                    tag.className = 'px-3 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold text-xs flex items-center space-x-1.5';
+                    tag.innerHTML = `<i class="fa-solid fa-check"></i><span>${r}</span>`;
+                    rolesContainer.appendChild(tag);
+                });
+            } else {
+                rolesContainer.innerHTML = '<span class="text-xs text-slate-400">Brak jednoznacznych sygnatur (pełna analiza w LLM Studio).</span>';
+            }
+
+            // Drives
+            const drivesContainer = document.getElementById('drives-container');
+            drivesContainer.innerHTML = '';
+            (p.metrics.drives || []).forEach(d => {
+                const card = document.createElement('div');
+                card.className = 'bg-slate-900/80 border border-darkborder rounded-xl p-4 space-y-2';
+                const usedPct = d.used_percent || 0;
+                const barColor = usedPct > 90 ? 'bg-red-500' : (usedPct > 75 ? 'bg-amber-500' : 'bg-emerald-500');
+                card.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <span class="font-bold text-sm text-white">${d.fs_name}</span>
+                        <span class="text-xs font-semibold ${usedPct > 90 ? 'text-red-400' : 'text-slate-300'}">${usedPct}%</span>
+                    </div>
+                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                        <div class="${barColor} h-full rounded-full" style="width: ${Math.min(usedPct, 100)}%"></div>
+                    </div>
+                    <div class="flex justify-between text-[11px] text-slate-400 pt-1">
+                        <span>Zajęte: ${d.used_formatted || '?'}</span>
+                        <span>Łącznie: ${d.total_formatted || '?'}</span>
+                    </div>
+                `;
+                drivesContainer.appendChild(card);
+            });
+
+            // Services
+            allServices = p.windows_services || [];
+            renderServicesTable(allServices);
+
+            // Hyper-V
+            const hvVms = p.hyperv.guest_vms || [];
+            document.getElementById('badge-vm-count').innerText = hvVms.length;
+            if (p.hyperv.is_hyperv_host && hvVms.length > 0) {
+                document.getElementById('hyperv-warning').classList.add('hidden');
+                document.getElementById('hyperv-content').classList.remove('hidden');
+                const vmsGrid = document.getElementById('hyperv-vms-grid');
+                vmsGrid.innerHTML = '';
+                hvVms.forEach(vm => {
+                    const vmCard = document.createElement('div');
+                    vmCard.className = 'bg-slate-900 border border-darkborder rounded-xl p-4 flex items-center justify-between';
+                    vmCard.innerHTML = `
+                        <div>
+                            <span class="font-bold text-xs text-white block">${vm.vm_name}</span>
+                            <span class="text-[10px] text-slate-400 font-mono">Hyper-V Guest</span>
+                        </div>
+                        <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${vm.state === 'Running' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'}">${vm.state}</span>
+                    `;
+                    vmsGrid.appendChild(vmCard);
+                });
+            } else {
+                document.getElementById('hyperv-warning').classList.remove('hidden');
+                document.getElementById('hyperv-content').classList.add('hidden');
+            }
+
+            // Inventory
+            const invList = document.getElementById('inv-hardware-list');
+            invList.innerHTML = `
+                <div class="flex justify-between border-b border-darkborder/40 pb-1.5">
+                    <span class="text-slate-400">Sprzęt / Vendor:</span>
+                    <span class="font-semibold text-slate-200">${p.inventory.hardware || p.inventory.vendor || 'N/A'}</span>
+                </div>
+                <div class="flex justify-between border-b border-darkborder/40 pb-1.5">
+                    <span class="text-slate-400">Model:</span>
+                    <span class="font-semibold text-slate-200">${p.inventory.model || 'N/A'}</span>
+                </div>
+                <div class="flex justify-between border-b border-darkborder/40 pb-1.5">
+                    <span class="text-slate-400">Numer Seryjny:</span>
+                    <span class="font-semibold text-slate-200 font-mono">${p.inventory.serial_number || 'N/A'}</span>
+                </div>
+                <div class="flex justify-between border-b border-darkborder/40 pb-1.5">
+                    <span class="text-slate-400">Adresy MAC:</span>
+                    <span class="font-semibold text-slate-200 font-mono">${(p.inventory.mac_addresses || []).join(', ') || 'N/A'}</span>
+                </div>
+            `;
+
+            const tagsContainer = document.getElementById('inv-tags-list');
+            tagsContainer.innerHTML = '';
+            (p.tags || []).forEach(t => {
+                const tag = document.createElement('span');
+                tag.className = 'px-2.5 py-1 bg-slate-900 border border-darkborder rounded-lg text-slate-300 text-[11px]';
+                tag.innerHTML = `<span class="text-brand-400">${t.tag}:</span> ${t.value}`;
+                tagsContainer.appendChild(tag);
+            });
+
+            // Remote Execution
+            const remoteRaw = document.getElementById('remote-probe-raw');
+            if (p.remote_execution) {
+                remoteRaw.innerText = p.remote_execution.raw_output || (p.remote_execution.success ? 'Wykonano pomyślnie (brak tekstu wyjściowego).' : `Błąd: ${p.remote_execution.error_message}`);
+            } else {
+                remoteRaw.innerText = 'Brak uruchomionej zdalnej sondy. Kliknij "Wykonaj Sondę Teraz" lub uruchom w CLI z flagą --remote-probe.';
+            }
+
+            // LLM Studio
+            document.getElementById('llm-user-prompt-text').innerText = llmPrompt || JSON.stringify(p, null, 2);
+        }
+
+        function renderServicesTable(services) {
+            const tbody = document.getElementById('services-table-body');
+            tbody.innerHTML = '';
+
+            const filtered = services.filter(s => {
+                if (currentServiceFilter === 'Running') return s.state === 'Running';
+                if (currentServiceFilter === 'Stopped') return s.state !== 'Running';
+                return true;
+            });
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="5" class="p-4 text-center text-slate-500">Brak usług pasujących do filtra</td></tr>';
+                return;
+            }
+
+            filtered.forEach(s => {
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-900/50 transition';
+                const isRunning = s.state === 'Running';
+                tr.innerHTML = `
+                    <td class="p-3 font-semibold text-slate-200">${s.name}</td>
+                    <td class="p-3 text-slate-400">${s.display_name || '-'}</td>
+                    <td class="p-3"><span class="px-2 py-0.5 rounded text-[10px] font-bold ${isRunning ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-red-500/20 text-red-300 border border-red-500/30'}">${s.state}</span></td>
+                    <td class="p-3 text-slate-400">${s.startup_type || '-'}</td>
+                    <td class="p-3 font-mono text-[10px] text-slate-500 truncate max-w-xs">${s.item_key || '-'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function setServiceFilter(type) {
+            currentServiceFilter = type;
+            renderServicesTable(allServices);
+        }
+
+        function filterServicesTable() {
+            const q = document.getElementById('svc-filter').value.toLowerCase();
+            const matched = (currentPayload.windows_services || []).filter(s => 
+                s.name.toLowerCase().includes(q) || (s.display_name && s.display_name.toLowerCase().includes(q))
+            );
+            allServices = matched;
+            renderServicesTable(allServices);
+        }
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('[id^="btn-tab-"]').forEach(el => el.classList.remove('tab-active'));
+
+            const targetTab = document.getElementById(tabId);
+            const targetBtn = document.getElementById(`btn-${tabId}`);
+            if (targetTab) targetTab.classList.remove('hidden');
+            if (targetBtn) targetBtn.classList.add('tab-active');
+        }
+
+        function copyToClipboard(elementId) {
+            const text = document.getElementById(elementId).innerText;
+            navigator.clipboard.writeText(text).then(() => {
+                showToast('Skopiowano prompt LLM do schowka!');
+            }).catch(err => {
+                showToast('Błąd kopiowania do schowka', true);
+            });
+        }
+
+        async function saveAnalysisToDisk() {
+            if (!currentPayload) return;
+            try {
+                const res = await fetch('/api/save', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ host_name: currentPayload.host_name, payload: currentPayload })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    showToast(`Zapisano pomyślnie: ${data.file_path}`);
+                }
+            } catch (e) {
+                showToast(`Błąd zapisu: ${e.message}`, true);
+            }
+        }
+
+        function downloadFullJson() {
+            if (!currentPayload) return;
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentPayload, null, 2));
+            const dlAnchor = document.createElement('a');
+            dlAnchor.setAttribute("href", dataStr);
+            dlAnchor.setAttribute("download", `${currentPayload.host_name}_analysis.json`);
+            document.body.appendChild(dlAnchor);
+            dlAnchor.click();
+            dlAnchor.remove();
+            showToast(`Pobieranie ${currentPayload.host_name}_analysis.json...`);
+        }
+    </script>
+</body>
+</html>
