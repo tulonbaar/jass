@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Union
 
 from jass.core.client import ZabbixAPIException, ZabbixClient
 from jass.core.models import HostAnalysisPayload
+from jass.core.probes import PROBE_CATALOG
 from jass.core.prompt_builder import LLMPromptBuilder
 from jass.modules.windows_sniffer import WindowsSniffer
 
@@ -102,6 +103,7 @@ class ZabbixAnalyzer:
         host_identifier: str,
         run_remote_probe: bool = False,
         script_name: Optional[str] = None,
+        probe_key: Optional[str] = None,
     ) -> HostAnalysisPayload:
         """
         Performs full telemetry analysis on a single host.
@@ -109,6 +111,9 @@ class ZabbixAnalyzer:
         :param host_identifier: Technical host name, visible name, or hostid
         :param run_remote_probe: Whether to execute remote probe via script.execute
         :param script_name: Name of predefined Zabbix script
+        :param probe_key: Key from `jass.core.probes.PROBE_CATALOG` (e.g. "hardware_inventory",
+            "installed_applications", "event_log_errors", "disk_content_scan"). Takes precedence
+            over `script_name`; the matching Zabbix script is auto-created if missing.
         :return: Structured HostAnalysisPayload object
         """
         if not self._connected:
@@ -118,6 +123,7 @@ class ZabbixAnalyzer:
             host_identifier=host_identifier,
             run_remote_probe=run_remote_probe,
             script_name=script_name,
+            probe_key=probe_key,
         )
         return payload
 
@@ -126,6 +132,7 @@ class ZabbixAnalyzer:
         group_identifier: str,
         run_remote_probe: bool = False,
         script_name: Optional[str] = None,
+        probe_key: Optional[str] = None,
     ) -> List[HostAnalysisPayload]:
         """
         Performs telemetry analysis on all hosts in the specified host group.
@@ -133,6 +140,7 @@ class ZabbixAnalyzer:
         :param group_identifier: Hostgroup name or groupid
         :param run_remote_probe: Whether to execute remote probe on each host
         :param script_name: Script name for remote probe
+        :param probe_key: Known probe catalog key (see `analyze_host`)
         :return: List of HostAnalysisPayload objects
         """
         if not self._connected:
@@ -165,7 +173,9 @@ class ZabbixAnalyzer:
         for h in hosts:
             h_name = h.get("host") or h.get("name") or h["hostid"]
             try:
-                payload = self.analyze_host(h_name, run_remote_probe=run_remote_probe, script_name=script_name)
+                payload = self.analyze_host(
+                    h_name, run_remote_probe=run_remote_probe, script_name=script_name, probe_key=probe_key
+                )
                 results.append(payload)
             except Exception as e:
                 logger.error(f"Error analyzing host {h_name}: {e}")
@@ -211,6 +221,14 @@ class ZabbixAnalyzer:
     def generate_llm_prompt(payload: HostAnalysisPayload) -> str:
         """Generates ready-to-use LLM prompt for the given host."""
         return LLMPromptBuilder.build_user_prompt(payload)
+
+    @staticmethod
+    def list_available_probes() -> List[Dict[str, str]]:
+        """Lists all built-in remote probes (`jass.core.probes.PROBE_CATALOG`) with their descriptions."""
+        return [
+            {"key": p.key, "zabbix_script_name": p.zabbix_script_name, "description": p.description}
+            for p in sorted(PROBE_CATALOG.values(), key=lambda x: x.key)
+        ]
 
     def close(self) -> None:
         """Closes client session."""

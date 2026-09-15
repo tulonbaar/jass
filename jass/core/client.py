@@ -92,6 +92,7 @@ class ZabbixClient:
         self.session.mount("https://", adapter)
 
         self._api_version: Optional[str] = None
+        self._api_major_version: float = 0.0
 
     @staticmethod
     def _normalize_api_url(url: str) -> str:
@@ -106,6 +107,15 @@ class ZabbixClient:
             else:
                 url += "/api_jsonrpc.php"
         return url
+
+    @staticmethod
+    def _parse_major_version(version_str: str) -> float:
+        """Parses a Zabbix version string (e.g. '6.4.12') into a major.minor float (e.g. 6.4)."""
+        try:
+            parts = version_str.split(".")
+            return float(f"{parts[0]}.{parts[1]}")
+        except (IndexError, ValueError):
+            return 0.0
 
     @property
     def is_authenticated(self) -> bool:
@@ -124,6 +134,7 @@ class ZabbixClient:
         
         # 1. Check API version (does not require authentication)
         self._api_version = self.get_version()
+        self._api_major_version = self._parse_major_version(self._api_version)
         logger.info(f"Detected Zabbix API version: {self._api_version}")
 
         # 2. Authentication
@@ -220,14 +231,18 @@ class ZabbixClient:
             "User-Agent": "JASS-JustAnotherSystemSniffer/1.0",
         }
 
-        # In Zabbix 6.0+, token can be in "auth" payload field or Bearer header
+        # Since Zabbix 6.4+, the auth token must be sent ONLY via the "Authorization: Bearer"
+        # HTTP header; including an "auth" member in the JSON-RPC payload is rejected by the
+        # server with "Invalid parameter '/': unexpected parameter 'auth'." For Zabbix versions
+        # older than 6.4 (no Bearer header support), the token must also be included in the payload.
+        # Methods that do not require authentication (e.g. apiinfo.version, user.login) must
+        # never include an "auth" member at all, not even a null value.
         if auth_required:
             if not self.auth_token:
                 raise ZabbixAuthException("No active auth token for authenticated method call.")
-            payload["auth"] = self.auth_token
             headers["Authorization"] = f"Bearer {self.auth_token}"
-        else:
-            payload["auth"] = None
+            if self._api_major_version and self._api_major_version < 6.4:
+                payload["auth"] = self.auth_token
 
         logger.debug(f"Sending JSON-RPC request: method={method}, id={self._req_id}")
 

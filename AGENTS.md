@@ -57,7 +57,7 @@ jass/
 
 ### 2. `jass.core.models`
 - Built on **Pydantic V2**.
-- Models include: `HostInventory`, `DriveMetric`, `SystemMetrics`, `WindowsService`, `HyperVVM`, `HyperVData`, `RemoteExecutionResult`, `HostAnalysisPayload`.
+- Models include: `HostInventory`, `DriveMetric`, `HostMetrics`, `WindowsService`, `HyperVGuestVM`, `HyperVData`, `RemoteExecutionResult`, `HostAnalysisPayload`.
 - All timestamps use ISO 8601 UTC format.
 - Output serialization helper: `payload.to_llm_json(indent=2)` and `payload.to_dict()`.
 
@@ -65,11 +65,11 @@ jass/
 - Abstract base class inheriting `abc.ABC`.
 - Defines the required contract for all platform sniffers:
   - `collect_inventory(host_id, host_raw) -> HostInventory`
-  - `collect_metrics(host_id, items) -> SystemMetrics`
+  - `collect_metrics(host_id, items) -> HostMetrics`
   - `collect_services(host_id, items) -> List[Any]`
   - `collect_virtualization_data(host_id, items) -> HyperVData`
-  - `execute_remote_probe(host_id, command) -> RemoteExecutionResult`
-  - `analyze_host(host_name_or_id, execute_probe, probe_command) -> HostAnalysisPayload`
+  - `execute_remote_probe(host_id, script_name_or_cmd, probe_key) -> RemoteExecutionResult`
+  - `analyze_host(host_identifier, run_remote_probe, script_name, probe_key) -> HostAnalysisPayload`
 
 ### 4. `jass.modules.windows_sniffer.WindowsSniffer`
 - Specializes `BaseSystemSniffer` for Windows and Hyper-V.
@@ -86,11 +86,34 @@ jass/
 - Generates system and user prompts designed for standard LLM Chat Completion APIs (`OpenAI`, `Anthropic`, `Ollama`).
 - Pre-structures the prompt with server identity, inventory, core resources, disks, top services, virtualization flags, and remote probe outputs.
 
+### 7. `jass.core.probes.PROBE_CATALOG`
+- A registry of named, reusable remote diagnostic probes (`ProbeDefinition`: key, Zabbix script name,
+  PowerShell command, parser function). Backs the Probe / Remote Execution mechanism - see the
+  "How the Probe / Remote Execution mechanism works" section of [README.md](README.md).
+- `WindowsSniffer.execute_remote_probe()` auto-creates the corresponding Zabbix script (`script.create`)
+  the first time a probe key is used, then runs it via `script.execute` and parses the result.
+- Built-in probes: `listening_ports`, `hardware_inventory` (serial number/MAC via WMI/CIM),
+  `installed_applications` (Uninstall registry keys), `event_log_errors` (System/Application logs,
+  last 24h), `disk_content_scan` (top-level folders per drive, flags non-standard ones).
+
 ---
 
 ## 🛠️ How to Extend JASS
 
 When adding new features or modules, follow these established design patterns:
+
+### Adding a New Remote Probe (e.g., a new diagnostic script)
+1. Open `jass/core/probes.py`.
+2. Write a parser function `parse_<name>(output: str) -> Any` that turns the raw agent stdout into
+   structured JSON (use `_safe_json_loads()` to tolerate PowerShell noise around the JSON payload).
+3. Add a `ProbeDefinition` entry to `PROBE_CATALOG` with a unique key, the Zabbix script display name
+   JASS should create/look up, the PowerShell one-liner to run, and the parser.
+4. That's it - the CLI (`--probe`, `--list-probes`), the Web UI probe dropdown, and
+   `WindowsSniffer.execute_remote_probe()` all read from `PROBE_CATALOG` automatically; no other code
+   needs to change.
+5. If the probe should enrich `HostInventory` or another model (like `hardware_inventory` does today
+   via `WindowsSniffer._merge_probe_into_inventory`), add a small merge step in
+   `windows_sniffer.py::analyze_host()`.
 
 ### Adding a New Platform Sniffer (e.g., Linux / VMware ESXi)
 1. Create a new module in `jass/modules/` (e.g., `linux_sniffer.py`).
@@ -122,6 +145,22 @@ If asked to enable direct LLM execution (e.g. automatically querying OpenAI / An
 1. Create `jass/core/llm_client.py`.
 2. Implement providers using standard REST / SDK calls with configurable model names, base URLs, and API keys.
 3. Add a `--query-llm` flag to `jass/cli.py` and a `/api/analyze-llm` endpoint to `jass/ui/app.py`.
+
+---
+
+## 🗺️ Roadmap / Planned Extensions
+
+- **Network traffic analysis (deferred, not yet implemented)**: per-host analysis of *who talks to
+  whom* - active TCP/UDP connections (not just listeners), remote endpoints contacted, and which
+  services listen on which ports. Likely design: a new `network_traffic_scan` probe
+  (`Get-NetTCPConnection` without the `-State Listen` filter, plus reverse-DNS/ASN enrichment done
+  JASS-side) feeding a new `NetworkConnection` model and a dedicated `collect_network_topology()`
+  method. Explicitly scoped as a later phase by the project owner - do not start without an explicit
+  request.
+- **Disk content analysis**: the `disk_content_scan` probe currently only lists top-level folder
+  names per drive and flags non-standard ones. Follow-up: recursive scanning with size/age hints,
+  and heuristic detection of known application/database footprints (e.g. `*.mdf`/`*.ldf` -> SQL
+  Server, `*.vhdx` -> Hyper-V storage, `Program Files\<vendor>` -> installed vendor software).
 
 ---
 

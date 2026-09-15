@@ -90,9 +90,24 @@ class HyperVGuestVM(BaseModel):
     vm_name: str
     state: str  # Running, Off, Saved, Paused, Unknown
     cpu_cores: Optional[int] = None
+    cpu_usage_percent: Optional[float] = None
+    memory_allocated_bytes: Optional[int] = None
     memory_allocated_formatted: Optional[str] = None
+    memory_demand_bytes: Optional[int] = None
+    memory_demand_formatted: Optional[str] = None
     health: Optional[str] = None
     uptime: Optional[str] = None
+    uptime_seconds: Optional[int] = None
+    mac_address: Optional[str] = None
+    ip_address: Optional[str] = None
+    is_clustered: Optional[bool] = None
+    checkpoint_count: Optional[int] = None
+    checkpoint_oldest_age_seconds: Optional[int] = None
+    integration_services_version: Optional[str] = None
+    integration_services_state: Optional[str] = None
+    replication_mode: Optional[str] = None
+    replication_state: Optional[str] = None
+    replication_health: Optional[str] = None
     raw_attributes: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -108,12 +123,14 @@ class HyperVData(BaseModel):
 class RemoteExecutionResult(BaseModel):
     """Result of remote script execution via Zabbix API (script.execute)."""
     script_name: str
+    probe_key: Optional[str] = None  # Key from jass.core.probes.PROBE_CATALOG, if a known probe was used
     command: Optional[str] = None
     executed_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     success: bool = True
     exit_code: Optional[int] = None
     raw_output: str = ""
     parsed_listening_ports: List[Dict[str, Any]] = Field(default_factory=list)
+    parsed_data: Any = None  # Structured output of the probe's parser (shape depends on probe_key)
     error_message: Optional[str] = None
 
 

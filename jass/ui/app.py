@@ -61,6 +61,7 @@ class AnalyzeHostRequest(BaseModel):
     host_identifier: str
     run_remote_probe: bool = False
     script_name: Optional[str] = None
+    probe_key: Optional[str] = None
 
 
 class SavePayloadRequest(BaseModel):
@@ -170,6 +171,12 @@ async def api_hosts(group_id: Optional[str] = None, search: Optional[str] = None
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/probes")
+async def api_probes():
+    """Lists built-in remote probes available in the JASS probe catalog."""
+    return {"probes": ZabbixAnalyzer.list_available_probes()}
+
+
 @app.post("/api/analyze/host")
 async def api_analyze_host(req: AnalyzeHostRequest):
     """Performs host telemetry analysis and returns JSON payload."""
@@ -179,6 +186,7 @@ async def api_analyze_host(req: AnalyzeHostRequest):
             host_identifier=req.host_identifier,
             run_remote_probe=req.run_remote_probe,
             script_name=req.script_name,
+            probe_key=req.probe_key,
         )
         state["cached_payloads"][payload.host_name] = payload
         state["cached_payloads"][payload.host_id] = payload

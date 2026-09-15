@@ -83,6 +83,49 @@ class TestWindowsSniffer(unittest.TestCase):
         self.assertEqual(c_drive.total_formatted, "200.00 GB")
         self.assertEqual(c_drive.used_percent, 50.0)
 
+    def test_collect_metrics_modern_dependent_fs_keys(self):
+        # Modern "Windows by Zabbix agent active" template (6.0+) uses dependent items with
+        # the "vfs.fs.dependent.size[...]" key format instead of the legacy "vfs.fs.size[...]".
+        sample_items = [
+            {"itemid": "1", "name": "FS [C:]: Space: Used", "key_": "vfs.fs.dependent.size[C:,used]", "lastvalue": "119036612608"},
+            {"itemid": "2", "name": "FS [C:]: Space: Total", "key_": "vfs.fs.dependent.size[C:,total]", "lastvalue": "135810510848"},
+            {"itemid": "3", "name": "FS [C:]: Space: Used, in %", "key_": "vfs.fs.dependent.size[C:,pused]", "lastvalue": "87.649043"},
+            {"itemid": "4", "name": "FS [C:]: Space: Available", "key_": "vfs.fs.dependent.size[C:,free]", "lastvalue": "16773898240"},
+        ]
+
+        metrics = self.sniffer.collect_metrics("10001", items=sample_items)
+        self.assertEqual(len(metrics.drives), 1)
+
+        c_drive = metrics.drives[0]
+        self.assertEqual(c_drive.fs_name, "C:")
+        self.assertEqual(c_drive.total_bytes, 135810510848)
+        self.assertEqual(c_drive.used_bytes, 119036612608)
+        self.assertEqual(c_drive.free_bytes, 16773898240)
+        self.assertEqual(c_drive.used_percent, 87.65)
+
+    def test_collect_metrics_fs_get_data_json_blob(self):
+        # The "Get data" master/dependent item returns the raw JSON payload for the filesystem,
+        # which JASS should be able to parse directly as a robust fallback.
+        raw_json = (
+            '{"fsname":"C:","fslabel":"","bytes":{"used":119036612608,"free":16773898240,'
+            '"total":135810510848,"pused":87.649043,"pfree":12.350957},'
+            '"fsdrivetype":"fixed","fstype":"NTFS"}'
+        )
+        sample_items = [
+            {"itemid": "1", "name": "FS [C:]: Get data", "key_": "vfs.fs.dependent[C:,data]", "lastvalue": raw_json},
+        ]
+
+        metrics = self.sniffer.collect_metrics("10001", items=sample_items)
+        self.assertEqual(len(metrics.drives), 1)
+
+        c_drive = metrics.drives[0]
+        self.assertEqual(c_drive.fs_name, "C:")
+        self.assertEqual(c_drive.total_bytes, 135810510848)
+        self.assertEqual(c_drive.used_bytes, 119036612608)
+        self.assertEqual(c_drive.free_bytes, 16773898240)
+        self.assertEqual(c_drive.used_percent, 87.65)
+        self.assertEqual(c_drive.free_percent, 12.35)
+
     def test_collect_services(self):
         sample_items = [
             {"itemid": "1", "name": "MSSQLSERVER Service state", "key_": "service.info[MSSQLSERVER,state]", "lastvalue": "0"},
@@ -99,6 +142,23 @@ class TestWindowsSniffer(unittest.TestCase):
         self.assertIn("W3SVC", svc_dict)
         self.assertEqual(svc_dict["W3SVC"].state, "Stopped")
 
+    def test_collect_services_quoted_keys_no_trailing_quote(self):
+        """Regression test: service.info["Name",state] must not leave a trailing quote in the name."""
+        sample_items = [
+            {"itemid": "1", "name": "AppHostSvc state", "key_": 'service.info["AppHostSvc",state]', "lastvalue": "0"},
+            {"itemid": "2", "name": "BFE state", "key_": 'service.info["BFE",state]', "lastvalue": "0"},
+            {"itemid": "3", "name": "CryptSvc startup", "key_": 'service.info["CryptSvc",startup]', "lastvalue": "2"},
+        ]
+
+        services = self.sniffer.collect_services("10001", items=sample_items)
+        names = {s.name for s in services}
+
+        self.assertIn("AppHostSvc", names)
+        self.assertIn("BFE", names)
+        self.assertIn("CryptSvc", names)
+        for n in names:
+            self.assertNotIn('"', n)
+
     def test_collect_hyperv(self):
         sample_items = [
             {"itemid": "1", "name": "Hyper-V VM CRM-PROD Guest Run Time", "key_": r'perf_counter["\Hyper-V Hypervisor Virtual Processor(CRM-PROD:HV VP 0)\% Guest Run Time"]', "lastvalue": "12.5"},
@@ -112,6 +172,88 @@ class TestWindowsSniffer(unittest.TestCase):
         vm_names = [v.vm_name for v in hv_data.guest_vms]
         self.assertIn("CRM-PROD", vm_names)
         self.assertIn("ERP-DB", vm_names)
+
+    def test_collect_hyperv_custom_powershell_template(self):
+        """Parses the custom 'Hyper-V VMs via PowerShell' (zbx-hyperv.ps1) dependent item keys."""
+        sample_items = [
+            {"itemid": "1", "name": "VM WEB01 State", "key_": 'hyperv.vm.state["WEB01"]', "lastvalue": "2"},
+            {"itemid": "2", "name": "VM WEB01 Uptime", "key_": 'hyperv.vm.uptime["WEB01"]', "lastvalue": "360000"},
+            {"itemid": "3", "name": "VM WEB01 CPU Usage", "key_": 'hyperv.vm.cpu.usage["WEB01"]', "lastvalue": "7.5"},
+            {"itemid": "4", "name": "VM WEB01 CPU Count", "key_": 'hyperv.vm.cpu.count["WEB01"]', "lastvalue": "4"},
+            {"itemid": "5", "name": "VM WEB01 Memory", "key_": 'hyperv.vm.memory["WEB01"]', "lastvalue": "4294967296"},
+            {"itemid": "6", "name": "VM WEB01 Memory Demand", "key_": 'hyperv.vm.memory.demand["WEB01"]', "lastvalue": "2147483648"},
+            {"itemid": "7", "name": "VM WEB01 MAC", "key_": 'hyperv.vm.mac["WEB01"]', "lastvalue": "00:15:5D:01:02:03"},
+            {"itemid": "8", "name": "VM WEB01 IP", "key_": 'hyperv.vm.ip["WEB01"]', "lastvalue": "10.0.0.55"},
+            {"itemid": "9", "name": "VM WEB01 Checkpoint Count", "key_": 'hyperv.vm.checkpoint.count["WEB01"]', "lastvalue": "1"},
+            {"itemid": "10", "name": "VM WEB01 Checkpoint Oldest", "key_": 'hyperv.vm.checkpoint.oldest["WEB01"]', "lastvalue": "86400"},
+            {"itemid": "11", "name": "VM DB02 State", "key_": 'hyperv.vm.state["DB02"]', "lastvalue": "3"},
+        ]
+
+        hv_data = self.sniffer.collect_virtualization_data("10001", items=sample_items)
+        self.assertTrue(hv_data.is_hyperv_host)
+        vm_map = {v.vm_name: v for v in hv_data.guest_vms}
+
+        self.assertIn("WEB01", vm_map)
+        web01 = vm_map["WEB01"]
+        self.assertEqual(web01.state, "Running")
+        self.assertEqual(web01.cpu_cores, 4)
+        self.assertAlmostEqual(web01.cpu_usage_percent, 7.5)
+        self.assertEqual(web01.memory_allocated_bytes, 4294967296)
+        self.assertEqual(web01.memory_allocated_formatted, "4.00 GB")
+        self.assertEqual(web01.memory_demand_bytes, 2147483648)
+        self.assertEqual(web01.mac_address, "00:15:5D:01:02:03")
+        self.assertEqual(web01.ip_address, "10.0.0.55")
+        self.assertEqual(web01.checkpoint_count, 1)
+        self.assertEqual(web01.checkpoint_oldest_age_seconds, 86400)
+        self.assertEqual(web01.uptime_seconds, 360000)
+
+        self.assertIn("DB02", vm_map)
+        self.assertEqual(vm_map["DB02"].state, "Off")
+
+    def test_execute_remote_probe_with_known_probe_auto_creates_script(self):
+        """When the probe's Zabbix script does not exist yet, it should be auto-created via script.create."""
+
+        def call_side_effect(method, params=None, auth_required=True):
+            if method == "script.get":
+                return []  # No pre-existing scripts
+            if method == "script.create":
+                return {"scriptids": ["501"]}
+            if method == "script.execute":
+                return {"value": '{"SerialNumber":"SN-12345","Manufacturer":"Dell Inc.","Model":"PowerEdge R750","MacAddresses":["00:11:22:33:44:55"]}'}
+            return []
+
+        self.mock_client.call.side_effect = call_side_effect
+
+        result = self.sniffer.execute_remote_probe("10001", probe_key="hardware_inventory")
+
+        self.assertIsNotNone(result)
+        self.assertTrue(result.success)
+        self.assertEqual(result.probe_key, "hardware_inventory")
+        self.assertEqual(result.parsed_data["serial_number"], "SN-12345")
+        self.assertEqual(result.parsed_data["mac_addresses"], ["00:11:22:33:44:55"])
+
+        # Ensure script.create was actually called to provision the missing script
+        create_calls = [c for c in self.mock_client.call.call_args_list if c.args[0] == "script.create"]
+        self.assertEqual(len(create_calls), 1)
+
+    def test_execute_remote_probe_reuses_existing_script(self):
+        """When a script with the probe's expected name already exists, it should be reused (no script.create)."""
+
+        def call_side_effect(method, params=None, auth_required=True):
+            if method == "script.get":
+                return [{"scriptid": "77", "name": "JASS - Listening TCP Ports", "command": "powershell ..."}]
+            if method == "script.execute":
+                return {"value": "[]"}
+            return []
+
+        self.mock_client.call.side_effect = call_side_effect
+
+        result = self.sniffer.execute_remote_probe("10001", probe_key="listening_ports")
+
+        self.assertIsNotNone(result)
+        self.assertTrue(result.success)
+        create_calls = [c for c in self.mock_client.call.call_args_list if c.args[0] == "script.create"]
+        self.assertEqual(len(create_calls), 0)
 
     def test_full_analysis_and_llm_prompt_generation(self):
         host_raw = {

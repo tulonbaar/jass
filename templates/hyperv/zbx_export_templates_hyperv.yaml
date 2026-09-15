@@ -1,0 +1,255 @@
+zabbix_export:
+  version: '6.4'
+  template_groups:
+    - uuid: d9819d7d5810413d9e86df8a1a63f4f7
+      name: Templates/Applications
+  templates:
+    - uuid: d8d5f2f60c0945d7965a546535088370
+      template: 'Hyper-V VMs via PowerShell'
+      name: 'Hyper-V VMs via PowerShell'
+      description: |
+        Monitors Hyper-V Virtual Machines using a custom PowerShell script (zbx-hyperv.ps1).
+        Requires UserParameters on the Zabbix Agent:
+        UserParameter=hyperv.discovery,powershell -NoProfile -ExecutionPolicy Bypass -File "C:\zabbix\scripts\zbx-hyperv.ps1" lld
+        UserParameter=hyperv.metrics,powershell -NoProfile -ExecutionPolicy Bypass -File "C:\zabbix\scripts\zbx-hyperv.ps1" full
+      groups:
+        - name: Templates/Applications
+      items:
+        - uuid: 94eef12df7714f8286f242e3773bb403
+          name: 'Hyper-V: Get VMs Data'
+          key: hyperv.metrics
+          delay: 2m
+          history: '0'
+          trends: '0'
+          value_type: TEXT
+          description: 'Master item retrieving JSON with all VM metrics'
+          tags:
+            - tag: component
+              value: raw-data
+      discovery_rules:
+        - uuid: 5eab728f88274b60b76024f80aa84cc3
+          name: 'Hyper-V VMs Discovery'
+          key: hyperv.discovery
+          delay: 1h
+          timeout: 30s
+          item_prototypes:
+            - uuid: 8644b6f46699485c9ffd28375c28d31c
+              name: 'VM {#VM.NAME}: State'
+              type: DEPENDENT
+              key: 'hyperv.vm.state["{#VM.NAME}"]'
+              delay: '0'
+              history: 7d
+              value_type: FLOAT
+              description: 'State of the Virtual Machine. 2=Running, 3=Off, 32768=Paused, etc.'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.[''{#VM.NAME}''].State'
+              master_item:
+                key: hyperv.metrics
+              tags:
+                - tag: vm
+                  value: '{#VM.NAME}'
+                - tag: component
+                  value: state
+            - uuid: 15176d2e12c8406ab1f23c7c6a9dc57f
+              name: 'VM {#VM.NAME}: Uptime'
+              type: DEPENDENT
+              key: 'hyperv.vm.uptime["{#VM.NAME}"]'
+              delay: '0'
+              history: 7d
+              value_type: FLOAT
+              units: s
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.[''{#VM.NAME}''].Uptime'
+              master_item:
+                key: hyperv.metrics
+              tags:
+                - tag: vm
+                  value: '{#VM.NAME}'
+                - tag: component
+                  value: uptime
+            - uuid: 9884379b03dc47d3bd41f490ec5107c8
+              name: 'VM {#VM.NAME}: CPU Usage'
+              type: DEPENDENT
+              key: 'hyperv.vm.cpu.usage["{#VM.NAME}"]'
+              delay: '0'
+              history: 7d
+              value_type: FLOAT
+              units: '%'
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.[''{#VM.NAME}''].CPUUsage'
+              master_item:
+                key: hyperv.metrics
+              tags:
+                - tag: vm
+                  value: '{#VM.NAME}'
+                - tag: component
+                  value: cpu
+            - uuid: 8f21788ed2134b41a8e42042dcf65c94
+              name: 'VM {#VM.NAME}: Memory Assigned'
+              type: DEPENDENT
+              key: 'hyperv.vm.memory["{#VM.NAME}"]'
+              delay: '0'
+              history: 7d
+              value_type: FLOAT
+              units: B
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.[''{#VM.NAME}''].Memory'
+              master_item:
+                key: hyperv.metrics
+              tags:
+                - tag: vm
+                  value: '{#VM.NAME}'
+                - tag: component
+                  value: memory
+            - uuid: a72e29d3057b4f2c891b0e9d6aaee2c1
+              name: 'VM {#VM.NAME}: Memory Demand'
+              type: DEPENDENT
+              key: 'hyperv.vm.memory.demand["{#VM.NAME}"]'
+              delay: '0'
+              history: 7d
+              value_type: FLOAT
+              units: B
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.[''{#VM.NAME}''].MemoryDemand'
+              master_item:
+                key: hyperv.metrics
+              tags:
+                - tag: vm
+                  value: '{#VM.NAME}'
+                - tag: component
+                  value: memory
+            - uuid: 459d102000ea478099d7221eb7d668fe
+              name: 'VM {#VM.NAME}: Processor Count'
+              type: DEPENDENT
+              key: 'hyperv.vm.cpu.count["{#VM.NAME}"]'
+              delay: '0'
+              history: 7d
+              value_type: FLOAT
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.[''{#VM.NAME}''].ProcessorCount'
+              master_item:
+                key: hyperv.metrics
+              tags:
+                - tag: vm
+                  value: '{#VM.NAME}'
+                - tag: component
+                  value: cpu
+            - uuid: 0ad245e774a849c59bd9124b3c27b29f
+              name: 'VM {#VM.NAME}: Checkpoint Count'
+              type: DEPENDENT
+              key: 'hyperv.vm.checkpoint.count["{#VM.NAME}"]'
+              delay: '0'
+              history: 7d
+              value_type: FLOAT
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.[''{#VM.NAME}''].CheckpointCount'
+              master_item:
+                key: hyperv.metrics
+              tags:
+                - tag: vm
+                  value: '{#VM.NAME}'
+                - tag: component
+                  value: checkpoint
+            - uuid: a51ef60d209a45e8b52aa38e3d882bf3
+              name: 'VM {#VM.NAME}: Checkpoint Oldest Age'
+              type: DEPENDENT
+              key: 'hyperv.vm.checkpoint.oldest["{#VM.NAME}"]'
+              delay: '0'
+              history: 7d
+              value_type: FLOAT
+              units: s
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.[''{#VM.NAME}''].CheckpointOldestAge'
+              master_item:
+                key: hyperv.metrics
+              tags:
+                - tag: vm
+                  value: '{#VM.NAME}'
+                - tag: component
+                  value: checkpoint
+            - uuid: 1599f9c916f9499f84beb98f6937b4e6
+              name: 'VM {#VM.NAME}: MAC Address'
+              type: DEPENDENT
+              key: 'hyperv.vm.mac["{#VM.NAME}"]'
+              delay: '0'
+              history: 7d
+              trends: '0'
+              value_type: CHAR
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.[''{#VM.NAME}''].MacAddress'
+              master_item:
+                key: hyperv.metrics
+              tags:
+                - tag: vm
+                  value: '{#VM.NAME}'
+                - tag: component
+                  value: network
+            - uuid: 1ab47b9ed13842858e2519c785f8b0a1
+              name: 'VM {#VM.NAME}: IP Address'
+              type: DEPENDENT
+              key: 'hyperv.vm.ip["{#VM.NAME}"]'
+              delay: '0'
+              history: 7d
+              trends: '0'
+              value_type: CHAR
+              preprocessing:
+                - type: JSONPATH
+                  parameters:
+                    - '$.[''{#VM.NAME}''].IPAddress'
+              master_item:
+                key: hyperv.metrics
+              tags:
+                - tag: vm
+                  value: '{#VM.NAME}'
+                - tag: component
+                  value: network
+          trigger_prototypes:
+            - uuid: e8accc8fe2954480bb4a9912fada5092
+              expression: 'last(/Hyper-V VMs via PowerShell/hyperv.vm.state["{#VM.NAME}"])<>2 and last(/Hyper-V VMs via PowerShell/hyperv.vm.state["{#VM.NAME}"])<>3'
+              name: 'VM {#VM.NAME} is in warning state'
+              priority: WARNING
+              description: 'Virtual machine is not in running (2) or normal off (3) state.'
+              tags:
+                - tag: vm
+                  value: '{#VM.NAME}'
+                - tag: component
+                  value: state
+            - uuid: 7bf3ff81aba545c6a4df434ceb8ec2f4
+              expression: 'last(/Hyper-V VMs via PowerShell/hyperv.vm.checkpoint.count["{#VM.NAME}"])>2'
+              name: 'VM {#VM.NAME} has too many checkpoints'
+              priority: WARNING
+              description: 'More than 2 checkpoints found. Consider consolidating them.'
+              tags:
+                - tag: vm
+                  value: '{#VM.NAME}'
+                - tag: component
+                  value: checkpoint
+            - uuid: 5db83f76c18e45e79e70b3a6b741b3e0
+              expression: 'last(/Hyper-V VMs via PowerShell/hyperv.vm.checkpoint.oldest["{#VM.NAME}"])>86400'
+              name: 'VM {#VM.NAME} has checkpoints older than 1 day'
+              priority: WARNING
+              description: 'Old checkpoints degrade performance and use disk space.'
+              tags:
+                - tag: vm
+                  value: '{#VM.NAME}'
+                - tag: component
+                  value: checkpoint
+

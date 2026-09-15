@@ -25,8 +25,8 @@ The tool provides both an interactive **Rich CLI interface** and a modern **Web 
    - ⚡ **[Performance Metrics]**: CPU utilization (%), core count, RAM metrics (Total, Used, Free, Utilization % with human-readable formatting), and system uptime.
    - 💾 **[Storage & Drives]**: Storage capacity, used/free space, and percent utilization across all filesystem volumes (C:, D:, E:, mountpoints).
    - ⚙️ **[Windows Services]**: System service states (`Running`, `Stopped`, `Paused`), startup types (`Automatic`, `Manual`, `Disabled`), and mapping of `service.info[*]` / `services[*]` item keys.
-   - 🔮 **[Hyper-V Virtualization Telemetry]**: Detection of Hypervisor roles, guest VM enumeration, execution states, vCPU/RAM allocations, and replication telemetry.
-   - 🔌 **[Remote Probe Execution (`script.execute`)]**: Live execution of remote diagnostic commands (e.g. PowerShell `Get-NetTCPConnection` for listening ports, network sockets, or active processes) executed directly via the Zabbix Agent.
+   - 🔮 **[Hyper-V Virtualization Telemetry]**: Detection of Hypervisor roles, guest VM enumeration (state, uptime, vCPU/RAM allocation & demand, MAC/IP address, checkpoints, replication health), including a ready-to-use custom Zabbix template (`zbx-hyperv.ps1` + `hyperv.conf`, see [templates/hyperv/](templates/hyperv/)) that exposes rich per-VM metrics via `hyperv.vm.*["{#VM.NAME}"]` dependent items.
+   - 🔌 **[Remote Probe Catalog (`script.execute`)]**: A built-in, extensible catalog of named diagnostic probes (`listening_ports`, `hardware_inventory`, `installed_applications`, `event_log_errors`, `disk_content_scan`) - see [jass/core/probes.py](jass/core/probes.py). JASS auto-provisions the matching Zabbix script on first use and parses its output into structured JSON.
 
 3. **LLM Context Synthesis & Role Signatures**:
    - Automated heuristic signature matching for core Windows server workloads:
@@ -137,6 +137,16 @@ python run.py --url "http://zabbix.corp.local/zabbix" --token "secret_api_token"
 python run.py --url "http://zabbix.corp.local/zabbix" --token "secret_api_token" --host "WIN-SRV-HV01" --remote-probe
 ```
 
+### 3b. Run a Specific Built-in Probe:
+```bash
+# List all built-in probes (listening_ports, hardware_inventory, installed_applications, event_log_errors, disk_content_scan)
+python run.py --list-probes
+
+# Run one against a host - JASS auto-creates the matching Zabbix script the first time it is used
+python run.py --url "http://zabbix.corp.local/zabbix" --token "secret_api_token" --host "WIN-SRV-HV01" --remote-probe --probe hardware_inventory
+```
+See **"How the Probe / Remote Execution mechanism works"** below for architecture details.
+
 ### 4. Generate LLM Analysis Prompt:
 ```bash
 python run.py --url "http://zabbix.corp.local/zabbix" --token "secret_api_token" --host "WIN-SRV-DC01" --prompt --print-prompt
@@ -147,6 +157,58 @@ python run.py --url "http://zabbix.corp.local/zabbix" --token "secret_api_token"
 python run.py --url "http://zabbix.corp.local/zabbix" --token "secret_api_token" --list-hosts
 python run.py --url "http://zabbix.corp.local/zabbix" --token "secret_api_token" --list-groups
 ```
+
+---
+
+## 🔌 How the Probe / Remote Execution mechanism works
+
+JASS cannot send arbitrary ad-hoc PowerShell code directly to a Zabbix agent - that boundary is
+enforced by Zabbix itself, not by JASS. Zabbix's `script.execute` JSON-RPC method can only run a
+script that **already exists** as a Zabbix "Script" object (*Data collection → Scripts*, scope
+"Manual host action"). This is by design: it keeps script execution auditable and centrally
+governed by whoever administers Zabbix.
+
+**What JASS adds on top of that:**
+
+1. **A built-in probe catalog** ([jass/core/probes.py](jass/core/probes.py)) - a Python registry of
+   named, ready-to-run PowerShell one-liners (`listening_ports`, `hardware_inventory`,
+   `installed_applications`, `event_log_errors`, `disk_content_scan`), each paired with a parser
+   that turns the raw agent output into structured JSON.
+2. **Auto-provisioning** - the first time a given probe (`--probe <key>`) is used against a Zabbix
+   instance, `WindowsSniffer.execute_remote_probe()` checks whether a script with the expected name
+   (e.g. `JASS - Hardware Inventory (Serial/MAC)`) already exists via `script.get`. If not, it
+   creates it via `script.create` (requires Zabbix admin/super-admin rights on the API
+   token/user). If your account lacks `script.create` permission, create the script manually in
+   Zabbix using the exact command from `PROBE_CATALOG[<key>].command` - JASS matches by name, so it
+   will pick it up on the next run.
+3. **Execution & parsing** - `script.execute` is called with the resolved `scriptid` + `hostid`; the
+   returned `value` field (the script's stdout) is parsed by the probe's dedicated parser and stored
+   in `remote_execution.parsed_data` on the analysis payload, alongside the raw text in
+   `remote_execution.raw_output`.
+
+**Extending it - adding a new probe type:**
+
+Add a new entry to `PROBE_CATALOG` in [jass/core/probes.py](jass/core/probes.py): a unique key, the
+Zabbix script display name JASS should create/look up, the PowerShell command to run, and a parser
+function turning its JSON output into a Python structure. No other code needs to change -
+`execute_remote_probe()`, the CLI (`--probe`), and the Web UI probe dropdown all read from this
+catalog automatically.
+
+**Where should new collection scripts live - Zabbix or JASS?**
+
+Recommended hybrid approach (used throughout JASS):
+- **Deployment & execution stays in Zabbix** - reusing its existing agent connectivity, permissions,
+  and audit trail (who ran what, on which host, when) instead of building a parallel remote-exec
+  channel.
+- **Parsing, normalization, and analysis logic lives in JASS** (`jass/core/probes.py`,
+  `jass/modules/windows_sniffer.py`) - so new telemetry dimensions can be added/iterated on without
+  redeploying Zabbix templates, and so the LLM-facing JSON schema stays consistent across probes.
+- For **recurring, always-on telemetry** (CPU/RAM/disk, services, Hyper-V guest state), keep using
+  regular Zabbix items/templates (e.g. the included Hyper-V PowerShell template) - Zabbix already
+  handles polling, history/trends storage, and alerting for you.
+- For **on-demand, ad-hoc, or heavy-payload data** (installed applications, Event Log dumps, disk
+  folder scans), use the Probe mechanism above - it avoids storing large blobs in Zabbix's history
+  tables and only runs when JASS asks for it.
 
 ---
 

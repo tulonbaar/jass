@@ -60,11 +60,22 @@ class BaseSystemSniffer(ABC):
         pass
 
     @abstractmethod
-    def execute_remote_probe(self, host_id: str, script_name_or_cmd: Optional[str] = None) -> Optional[RemoteExecutionResult]:
+    def execute_remote_probe(
+        self,
+        host_id: str,
+        script_name_or_cmd: Optional[str] = None,
+        probe_key: Optional[str] = None,
+    ) -> Optional[RemoteExecutionResult]:
         """Execute remote probe/script on agent via Zabbix API."""
         pass
 
     @abstractmethod
-    def analyze_host(self, host_identifier: str, run_remote_probe: bool = False) -> HostAnalysisPayload:
+    def analyze_host(
+        self,
+        host_identifier: str,
+        run_remote_probe: bool = False,
+        script_name: Optional[str] = None,
+        probe_key: Optional[str] = None,
+    ) -> HostAnalysisPayload:
         """Perform complete host audit and generate structured payload."""
         pass

@@ -348,13 +348,22 @@
                                 <i class="fa-solid fa-network-wired text-purple-400"></i>
                                 <span>Remote Execution Output (script.execute / PowerShell)</span>
                             </h3>
-                            <button onclick="triggerRemoteProbe()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold">
-                                Run Probe Now
-                            </button>
+                            <div class="flex items-center gap-2">
+                                <select id="probe-key-select" class="bg-slate-900 border border-darkborder rounded-lg text-xs text-slate-200 px-2 py-1.5">
+                                    <option value="">Heuristic (any diagnostic script)</option>
+                                </select>
+                                <button onclick="triggerRemoteProbe()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold">
+                                    Run Probe Now
+                                </button>
+                            </div>
                         </div>
                         <div id="remote-probe-container" class="space-y-4">
                             <div class="bg-slate-950 font-mono text-xs text-emerald-400 p-4 rounded-xl border border-darkborder overflow-x-auto max-h-96" id="remote-probe-raw">
                                 No remote probe results yet. Execute a probe using the button above.
+                            </div>
+                            <div>
+                                <h4 class="text-xs font-semibold text-slate-400 mb-2 uppercase tracking-wide">Parsed / Structured Output</h4>
+                                <div class="bg-slate-950 font-mono text-xs text-sky-300 p-4 rounded-xl border border-darkborder overflow-x-auto max-h-96" id="remote-probe-parsed"></div>
                             </div>
                         </div>
                     </div>
@@ -474,6 +483,7 @@
             checkConnectionStatus();
             loadGroups();
             loadHosts();
+            loadProbes();
         });
 
         function showToast(msg, isError = false) {
@@ -639,11 +649,14 @@
             document.getElementById('empty-state').classList.add('hidden');
             document.getElementById('host-view').classList.remove('hidden');
 
+            const probeSelect = document.getElementById('probe-key-select');
+            const probeKey = runRemote && probeSelect && probeSelect.value ? probeSelect.value : null;
+
             try {
                 const res = await fetch('/api/analyze/host', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ host_identifier: hostIdentifier, run_remote_probe: runRemote })
+                    body: JSON.stringify({ host_identifier: hostIdentifier, run_remote_probe: runRemote, probe_key: probeKey })
                 });
 
                 if (!res.ok) {
@@ -667,6 +680,25 @@
 
         function triggerRemoteProbe() {
             if (currentPayload) selectAndAnalyzeHost(currentPayload.host_name, true);
+        }
+
+        async function loadProbes() {
+            try {
+                const res = await fetch('/api/probes');
+                if (!res.ok) return;
+                const data = await res.json();
+                const select = document.getElementById('probe-key-select');
+                if (!select) return;
+                (data.probes || []).forEach(probe => {
+                    const opt = document.createElement('option');
+                    opt.value = probe.key;
+                    opt.title = probe.description;
+                    opt.innerText = probe.key.replace(/_/g, ' ');
+                    select.appendChild(opt);
+                });
+            } catch (e) {
+                console.error('Failed to load probe catalog', e);
+            }
         }
 
         function renderHostDashboard(p, llmPrompt) {
@@ -765,13 +797,21 @@
                 vmsGrid.innerHTML = '';
                 hvVms.forEach(vm => {
                     const vmCard = document.createElement('div');
-                    vmCard.className = 'bg-slate-900 border border-darkborder rounded-xl p-4 flex items-center justify-between';
+                    vmCard.className = 'bg-slate-900 border border-darkborder rounded-xl p-4 space-y-2';
+                    const stateBadge = `<span class="px-2 py-0.5 rounded text-[11px] font-semibold ${vm.state === 'Running' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'}">${vm.state}</span>`;
                     vmCard.innerHTML = `
-                        <div>
+                        <div class="flex items-center justify-between">
                             <span class="font-bold text-xs text-white block">${vm.vm_name}</span>
-                            <span class="text-[10px] text-slate-400 font-mono">Hyper-V Guest</span>
+                            ${stateBadge}
                         </div>
-                        <span class="px-2 py-0.5 rounded text-[11px] font-semibold ${vm.state === 'Running' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'}">${vm.state}</span>
+                        <div class="text-[10px] text-slate-400 font-mono space-y-0.5">
+                            ${vm.cpu_cores != null ? `<div>vCPU: ${vm.cpu_cores}${vm.cpu_usage_percent != null ? ` (${vm.cpu_usage_percent}%)` : ''}</div>` : ''}
+                            ${vm.memory_allocated_formatted ? `<div>RAM: ${vm.memory_allocated_formatted}${vm.memory_demand_formatted ? ` (demand: ${vm.memory_demand_formatted})` : ''}</div>` : ''}
+                            ${vm.uptime ? `<div>Uptime: ${vm.uptime}</div>` : ''}
+                            ${vm.mac_address ? `<div>MAC: ${vm.mac_address}</div>` : ''}
+                            ${vm.ip_address ? `<div>IP: ${vm.ip_address}</div>` : ''}
+                            ${vm.checkpoint_count ? `<div>Checkpoints: ${vm.checkpoint_count}</div>` : ''}
+                        </div>
                     `;
                     vmsGrid.appendChild(vmCard);
                 });
@@ -812,10 +852,17 @@
 
             // Remote Execution
             const remoteRaw = document.getElementById('remote-probe-raw');
+            const remoteParsed = document.getElementById('remote-probe-parsed');
             if (p.remote_execution) {
                 remoteRaw.innerText = p.remote_execution.raw_output || (p.remote_execution.success ? 'Executed successfully (no output string).' : `Error: ${p.remote_execution.error_message}`);
+                if (remoteParsed) {
+                    remoteParsed.innerText = p.remote_execution.parsed_data != null
+                        ? JSON.stringify(p.remote_execution.parsed_data, null, 2)
+                        : '';
+                }
             } else {
-                remoteRaw.innerText = 'No remote probe execution data. Run probe with the button above or CLI --remote-probe.';
+                remoteRaw.innerText = 'No remote probe execution data. Select a probe above and run it, or use CLI --remote-probe --probe <key>.';
+                if (remoteParsed) remoteParsed.innerText = '';
             }
 
             // LLM Studio

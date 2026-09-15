@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import logging
 import re
+import json
 from typing import Any, Dict, List, Optional, Tuple
 
 from jass.core.base_module import BaseSystemSniffer
@@ -23,6 +24,7 @@ from jass.core.models import (
     RemoteExecutionResult,
     WindowsService,
 )
+from jass.core.probes import ProbeDefinition, get_probe, list_probe_keys, parse_listening_ports
 
 logger = logging.getLogger("jass.modules.windows")
 
@@ -278,8 +280,14 @@ class WindowsSniffer(BaseSystemSniffer):
                     pass
 
             # --- 4. Disks / Filesystems ---
-            # e.g., vfs.fs.size[C:,total], vfs.fs.size["C:",used], vfs.fs.size[D:,pused]
-            fs_match = re.search(r'vfs\.fs\.size\["?([A-Za-z]:|[A-Za-z0-9_\/\-]+)"?\s*,\s*([a-zA-Z]+)\]', key)
+            # Modern Zabbix templates (6.0+) use dependent items with keys such as:
+            #   vfs.fs.dependent.size[C:,total] / vfs.fs.dependent.size[C:,used] / [...,pused] / [...,free] / [...,pfree]
+            # Legacy templates use the classic non-dependent key:
+            #   vfs.fs.size[C:,total] / vfs.fs.size["C:",used] / vfs.fs.size[D:,pused]
+            fs_match = re.search(
+                r'vfs\.fs\.(?:dependent\.)?size\["?([A-Za-z]:|[A-Za-z0-9_\/\-]+)"?\s*,\s*([a-zA-Z]+)\]',
+                key,
+            )
             if fs_match:
                 drive_letter = fs_match.group(1).upper().replace('"', '').strip()
                 metric_type = fs_match.group(2).lower()
@@ -300,6 +308,37 @@ class WindowsSniffer(BaseSystemSniffer):
                     elif metric_type in ["pfree", "free_percent"]:
                         drives_map[drive_letter]["free_percent"] = round(num_val, 2)
                 except (ValueError, TypeError):
+                    pass
+                continue
+
+            # Raw "Get data" master/dependent item returning the full vfs.fs.get() JSON blob, e.g.:
+            #   vfs.fs.dependent[C:,data]  or  vfs.fs.get[C:]
+            # Payload: {"fsname":"C:","bytes":{"used":..,"free":..,"total":..,"pused":..,"pfree":..},...}
+            fs_json_match = re.search(r'vfs\.fs\.(?:dependent\[|get\[)"?([A-Za-z]:|[A-Za-z0-9_\/\-]+)"?[,\]]', key)
+            if fs_json_match and str(lastval).strip().startswith(("{", "[")):
+                drive_letter = fs_json_match.group(1).upper().replace('"', '').strip()
+                try:
+                    parsed = json.loads(lastval)
+                    # vfs.fs.get (master item without LLD filter) returns a JSON array of all filesystems
+                    fs_entries = parsed if isinstance(parsed, list) else [parsed]
+                    for entry in fs_entries:
+                        if not isinstance(entry, dict):
+                            continue
+                        entry_name = str(entry.get("fsname", drive_letter)).upper().strip()
+                        bytes_info = entry.get("bytes", {})
+                        if entry_name not in drives_map:
+                            drives_map[entry_name] = {"fs_name": entry_name}
+                        if bytes_info.get("total") is not None:
+                            drives_map[entry_name].setdefault("total_bytes", int(bytes_info["total"]))
+                        if bytes_info.get("used") is not None:
+                            drives_map[entry_name].setdefault("used_bytes", int(bytes_info["used"]))
+                        if bytes_info.get("free") is not None:
+                            drives_map[entry_name].setdefault("free_bytes", int(bytes_info["free"]))
+                        if bytes_info.get("pused") is not None:
+                            drives_map[entry_name].setdefault("used_percent", round(float(bytes_info["pused"]), 2))
+                        if bytes_info.get("pfree") is not None:
+                            drives_map[entry_name].setdefault("free_percent", round(float(bytes_info["pfree"]), 2))
+                except (ValueError, TypeError, json.JSONDecodeError):
                     pass
 
         # Calculate memory percentage if missing
@@ -361,10 +400,12 @@ class WindowsSniffer(BaseSystemSniffer):
             lastval = str(it.get("lastvalue", "")).strip()
 
             # Match keys like service.info[service_name, state] or service.info[service_name, startup]
-            svc_match = re.search(r'service\.info\["?([^\],]+)"?\s*(?:,\s*([^\],]+))?\]', key, re.IGNORECASE)
+            # NOTE: the capture groups explicitly exclude the quote character ("), otherwise a
+            # trailing quote leaks into the service name for quoted keys, e.g. service.info["BFE",state].
+            svc_match = re.search(r'service\.info\["?([^\]",]+)"?\s*(?:,\s*"?([^\]",]+)"?)?\]', key, re.IGNORECASE)
             if svc_match:
-                svc_name = svc_match.group(1).strip()
-                param_type = (svc_match.group(2) or "state").strip().lower()
+                svc_name = svc_match.group(1).strip().strip('"')
+                param_type = (svc_match.group(2) or "state").strip().strip('"').lower()
 
                 if svc_name not in services:
                     services[svc_name] = WindowsService(
@@ -396,9 +437,38 @@ class WindowsSniffer(BaseSystemSniffer):
 
         return sorted(list(services.values()), key=lambda s: (s.state != "Running", s.name))
 
+    # Maps Microsoft.HyperV.PowerShell.VMState integer values (as emitted by the
+    # `zbx-hyperv.ps1` custom template's `Get-VM` collector) to readable labels.
+    HYPERV_VM_STATES = {
+        "1": "Other",
+        "2": "Running",
+        "3": "Off",
+        "4": "Stopping",
+        "6": "Saved",
+        "9": "Paused",
+        "10": "Starting",
+        "11": "Reset",
+        "32773": "Saving",
+        "32776": "Pausing",
+        "32779": "Resuming",
+    }
+
+    INTEGRATION_SERVICES_STATES = {
+        "0": "Up to date",
+        "1": "Update required",
+        "2": "Unknown",
+    }
+
     def collect_virtualization_data(self, host_id: str, items: Optional[List[Dict[str, Any]]] = None) -> HyperVData:
         """
-        Retrieves Hyper-V virtualization metrics and guest VM lists (Hyper-V templates).
+        Retrieves Hyper-V virtualization metrics and guest VM lists.
+
+        Supports two Hyper-V data sources:
+        1. The custom "Hyper-V VMs via PowerShell" template (`hyperv.vm.<metric>["{#VM.NAME}"]`
+           dependent items fed by `hyperv.metrics` / `zbx-hyperv.ps1`), which provides rich
+           per-VM telemetry (state, uptime, CPU/memory usage, MAC/IP, checkpoints, replication).
+        2. Legacy Hyper-V performance-counter based templates (`Hyper-V ... VM(<name>) ...`),
+           kept as a best-effort fallback for hosts without the custom template.
         """
         if items is None:
             items = self.fetch_all_items(host_id)
@@ -407,74 +477,164 @@ class WindowsSniffer(BaseSystemSniffer):
         vms_map: Dict[str, Dict[str, Any]] = {}
         raw_hyperv: Dict[str, Any] = {}
 
+        # Regex for the custom hyperv.vm.<metric>["VMNAME"] key format, e.g.:
+        #   hyperv.vm.state["WEB01"], hyperv.vm.cpu.usage["WEB01"], hyperv.vm.checkpoint.oldest["WEB01"]
+        hyperv_vm_key_re = re.compile(r'hyperv\.vm\.([a-z.]+)\["?([^"\]]+)"?\]', re.IGNORECASE)
+
         for it in items:
             key = it.get("key_", "")
             name = it.get("name", "")
             lastval = str(it.get("lastvalue", "")).strip()
 
-            # Check for Hyper-V keys
-            if re.search(r"hyperv|msvm_|hyper-v", key, re.IGNORECASE) or "hyper-v" in name.lower():
-                hyperv_data.is_hyperv_host = True
-                raw_hyperv[key] = {"name": name, "value": lastval}
+            if not (re.search(r"hyperv|msvm_|hyper-v", key, re.IGNORECASE) or "hyper-v" in name.lower()):
+                continue
 
-                # VM name detection
-                vm_name_match = re.search(r'Hyper-V.*?VM\(([^)]+)\)|Hyper-V.*?Processor\(([^:]+):|vm\.state\["?([^"]+)"?\]', key, re.IGNORECASE)
-                if vm_name_match:
-                    vm_name = next(g for g in vm_name_match.groups() if g is not None).strip()
-                    if vm_name not in ["_Total", "Total", "root", ""]:
-                        if vm_name not in vms_map:
-                            vms_map[vm_name] = {
-                                "vm_name": vm_name,
-                                "state": "Running" if "run time" in key.lower() or "processor" in key.lower() else "Unknown",
-                                "raw_attributes": {},
-                            }
-                        vms_map[vm_name]["raw_attributes"][key] = lastval
+            hyperv_data.is_hyperv_host = True
+            raw_hyperv[key] = {"name": name, "value": lastval}
 
-                if "virtual machines" in name.lower() or "active virtual machines" in name.lower():
-                    try:
-                        hyperv_data.virtual_machines_count = max(hyperv_data.virtual_machines_count, int(float(lastval)))
-                    except (ValueError, TypeError):
-                        pass
+            # 1. Custom "hyperv.vm.<metric>[VM]" key format (user-provided PowerShell template)
+            custom_match = hyperv_vm_key_re.search(key)
+            if custom_match:
+                metric = custom_match.group(1).lower()
+                vm_name = custom_match.group(2).strip().strip('"')
+                if vm_name:
+                    vm_entry = vms_map.setdefault(vm_name, {"vm_name": vm_name, "raw_attributes": {}})
+                    vm_entry["raw_attributes"][key] = lastval
+                    vm_entry[metric] = lastval
+                continue
+
+            # 2. Legacy performance-counter based key format (fallback heuristic)
+            vm_name_match = re.search(r'Hyper-V.*?VM\(([^)]+)\)|Hyper-V.*?Processor\(([^:]+):', key, re.IGNORECASE)
+            if vm_name_match:
+                vm_name = next(g for g in vm_name_match.groups() if g is not None).strip()
+                if vm_name not in ["_Total", "Total", "root", ""]:
+                    vm_entry = vms_map.setdefault(vm_name, {"vm_name": vm_name, "raw_attributes": {}})
+                    vm_entry["raw_attributes"][key] = lastval
+                    if "run time" in key.lower() or "processor" in key.lower():
+                        vm_entry.setdefault("state", "Running")
+
+            if "virtual machines" in name.lower() or "active virtual machines" in name.lower():
+                try:
+                    hyperv_data.virtual_machines_count = max(hyperv_data.virtual_machines_count, int(float(lastval)))
+                except (ValueError, TypeError):
+                    pass
 
         if vms_map:
             hyperv_data.is_hyperv_host = True
-            for vm_name, vm_dict in sorted(vms_map.items()):
-                hyperv_data.guest_vms.append(
-                    HyperVGuestVM(
-                        vm_name=vm_dict["vm_name"],
-                        state=vm_dict.get("state", "Unknown"),
-                        raw_attributes=vm_dict.get("raw_attributes", {}),
-                    )
-                )
+            for vm_name, vm in sorted(vms_map.items()):
+                hyperv_data.guest_vms.append(self._build_guest_vm(vm))
             hyperv_data.virtual_machines_count = max(hyperv_data.virtual_machines_count, len(hyperv_data.guest_vms))
 
         hyperv_data.raw_hyperv_metrics = raw_hyperv
         return hyperv_data
 
+    def _build_guest_vm(self, vm: Dict[str, Any]) -> HyperVGuestVM:
+        """Builds a `HyperVGuestVM` model from a raw metric dict keyed by hyperv.vm.<metric> suffixes."""
+
+        def _int(key: str) -> Optional[int]:
+            try:
+                return int(float(vm[key])) if key in vm and vm[key] not in ("", None) else None
+            except (ValueError, TypeError):
+                return None
+
+        def _float(key: str) -> Optional[float]:
+            try:
+                return float(vm[key]) if key in vm and vm[key] not in ("", None) else None
+            except (ValueError, TypeError):
+                return None
+
+        def _bool(key: str) -> Optional[bool]:
+            if key not in vm or vm[key] in ("", None):
+                return None
+            return str(vm[key]).strip().lower() in ("1", "true", "yes")
+
+        state_raw = vm.get("state")
+        state = self.HYPERV_VM_STATES.get(str(state_raw), vm.get("state", "Unknown")) if state_raw is not None else "Unknown"
+
+        mem_bytes = _int("memory")
+        mem_demand_bytes = _int("memory.demand")
+        uptime_seconds = _int("uptime")
+        int_svc_state_raw = vm.get("intsvcstate") or vm.get("int_svc_state")
+
+        return HyperVGuestVM(
+            vm_name=vm["vm_name"],
+            state=state,
+            cpu_cores=_int("cpu.count"),
+            cpu_usage_percent=_float("cpu.usage"),
+            memory_allocated_bytes=mem_bytes,
+            memory_allocated_formatted=self.format_bytes(mem_bytes),
+            memory_demand_bytes=mem_demand_bytes,
+            memory_demand_formatted=self.format_bytes(mem_demand_bytes),
+            uptime=self.format_uptime(uptime_seconds),
+            uptime_seconds=uptime_seconds,
+            mac_address=vm.get("mac"),
+            ip_address=vm.get("ip"),
+            is_clustered=_bool("isclustered"),
+            checkpoint_count=_int("checkpoint.count"),
+            checkpoint_oldest_age_seconds=_int("checkpoint.oldest"),
+            integration_services_version=vm.get("intsvcver"),
+            integration_services_state=self.INTEGRATION_SERVICES_STATES.get(str(int_svc_state_raw), int_svc_state_raw)
+            if int_svc_state_raw is not None
+            else None,
+            replication_mode=vm.get("replmode"),
+            replication_state=vm.get("replstate"),
+            replication_health=vm.get("replhealth"),
+            raw_attributes=vm.get("raw_attributes", {}),
+        )
+
+
     def execute_remote_probe(
         self,
         host_id: str,
         script_name_or_cmd: Optional[str] = None,
+        probe_key: Optional[str] = None,
+        auto_create_script: bool = True,
     ) -> Optional[RemoteExecutionResult]:
         """
         Executes a remote diagnostic script on host agent via Zabbix API (`script.execute`).
-        Captures the 'value' returned from the agent.
+        Captures the 'value' returned from the agent and, for known probes, parses it into
+        structured data (see `jass.core.probes.PROBE_CATALOG`).
+
+        Resolution order for which Zabbix script to run:
+        1. `probe_key` - a known probe from `PROBE_CATALOG` (e.g. "listening_ports",
+           "hardware_inventory"). If the matching Zabbix script does not exist yet, it is
+           auto-created via `script.create` (requires Zabbix admin permissions).
+        2. `script_name_or_cmd` - an explicit Zabbix script name or scriptid to run as-is.
+        3. Heuristic fallback - the first script whose name looks like a diagnostic probe.
+
+        Note: Zabbix's `script.execute` can only run scripts that already exist as Zabbix
+        "Script" objects (Data collection -> Scripts, scope "Manual host action") - JASS
+        cannot send arbitrary code straight to an agent, that boundary is enforced by Zabbix.
         """
         logger.info(f"Executing remote probe on hostid={host_id} (script.execute)...")
-        
+
+        probe_def = get_probe(probe_key) if probe_key else None
+        if probe_key and probe_def is None:
+            logger.warning(f"Unknown probe_key '{probe_key}'. Available: {list_probe_keys()}")
+
         try:
             # 1. Fetch available scripts for host (script.get)
             available_scripts = self.client.call("script.get", {"hostids": [host_id]})
             target_script = None
 
-            if script_name_or_cmd:
+            if probe_def:
+                for sc in available_scripts:
+                    if sc.get("name", "").lower() == probe_def.zabbix_script_name.lower():
+                        target_script = sc
+                        break
+                if not target_script and auto_create_script:
+                    target_script = self._ensure_probe_script(probe_def)
+                    if target_script:
+                        available_scripts.append(target_script)
+
+            elif script_name_or_cmd:
                 for sc in available_scripts:
                     if sc.get("name", "").lower() == script_name_or_cmd.lower() or sc.get("scriptid") == script_name_or_cmd:
                         target_script = sc
                         break
 
-            if not target_script and available_scripts:
-                # Find first matching diagnostic script
+            if not target_script and available_scripts and not probe_def:
+                # Find first matching diagnostic script (heuristic fallback)
                 for sc in available_scripts:
                     sc_name = sc.get("name", "").lower()
                     if any(term in sc_name for term in ["port", "probe", "powershell", "netstat", "tcp", "sniffer", "diag"]):
@@ -497,47 +657,87 @@ class WindowsSniffer(BaseSystemSniffer):
                 "hostid": host_id,
             }
             exec_res = self.client.call("script.execute", exec_params)
-            
+
             raw_output = ""
             if isinstance(exec_res, dict):
                 raw_output = exec_res.get("value", "")
             elif isinstance(exec_res, str):
                 raw_output = exec_res
 
-            # 3. Parse listening ports
-            parsed_ports = self._parse_listening_ports(raw_output)
+            # 3. Parse output using the probe's dedicated parser, if known
+            parsed_ports: List[Dict[str, Any]] = []
+            parsed_data: Any = None
+            if probe_def:
+                parsed_data = probe_def.parser(raw_output)
+                if probe_def.key == "listening_ports" and isinstance(parsed_data, list):
+                    parsed_ports = parsed_data
+            else:
+                parsed_ports = parse_listening_ports(raw_output)
 
             return RemoteExecutionResult(
                 script_name=script_name,
+                probe_key=probe_def.key if probe_def else None,
                 command=target_script.get("command"),
                 success=True,
                 raw_output=raw_output,
                 parsed_listening_ports=parsed_ports,
+                parsed_data=parsed_data,
             )
 
         except ZabbixAPIException as exc:
             logger.error(f"Remote script execution error on hostid={host_id}: {exc}")
             return RemoteExecutionResult(
-                script_name=script_name_or_cmd or "Unknown",
+                script_name=script_name_or_cmd or (probe_def.zabbix_script_name if probe_def else "Unknown"),
+                probe_key=probe_key,
                 success=False,
                 error_message=str(exc),
             )
 
+    def _ensure_probe_script(self, probe_def: "ProbeDefinition") -> Optional[Dict[str, Any]]:
+        """
+        Creates the Zabbix "Script" object for a known probe if it does not already exist
+        (`script.create`). Requires the connected user to have Zabbix admin/super-admin rights.
+        Returns the created script dict, or None if creation failed (e.g. insufficient rights) -
+        in that case the administrator should create it manually in Zabbix using
+        `probe_def.command` as the command, "Zabbix agent" as the execution target, and
+        "Manual host action" as the scope.
+        """
+        logger.info(f"Zabbix script '{probe_def.zabbix_script_name}' not found - attempting to create it (script.create)...")
+        try:
+            created = self.client.call(
+                "script.create",
+                {
+                    "name": probe_def.zabbix_script_name,
+                    "command": probe_def.command,
+                    "type": 0,  # 0 = Script
+                    "scope": 2,  # 2 = Manual host action (required for script.execute)
+                    "execute_on": 0,  # 0 = Zabbix agent
+                    "description": probe_def.description,
+                },
+            )
+            new_id = None
+            if isinstance(created, dict):
+                ids = created.get("scriptids") or []
+                new_id = ids[0] if ids else None
+            if not new_id:
+                return None
+            return {
+                "scriptid": new_id,
+                "name": probe_def.zabbix_script_name,
+                "command": probe_def.command,
+            }
+        except ZabbixAPIException as exc:
+            logger.warning(
+                f"Could not auto-create Zabbix script '{probe_def.zabbix_script_name}': {exc}. "
+                "Create it manually in Zabbix (Data collection -> Scripts) using the command from "
+                "jass.core.probes.PROBE_CATALOG, or ask an administrator to grant script.create permissions."
+            )
+            return None
+
     @staticmethod
     def _parse_listening_ports(output: str) -> List[Dict[str, Any]]:
-        """
-        Helper to parse PowerShell / Netstat output (e.g., Get-NetTCPConnection -State Listen).
-        """
-        ports: List[Dict[str, Any]] = []
-        lines = output.strip().splitlines()
-        for line in lines:
-            line_str = line.strip()
-            match_ip_port = re.search(r"(?:TCP|UDP)?\s*([0-9\.\*]+|\[::\]|::):(\d+)", line_str, re.IGNORECASE)
-            if match_ip_port:
-                ip = match_ip_port.group(1)
-                port = int(match_ip_port.group(2))
-                ports.append({"address": ip, "port": port, "raw_entry": line_str})
-        return ports
+        """Deprecated: use `jass.core.probes.parse_listening_ports` instead. Kept for compatibility."""
+        return parse_listening_ports(output)
 
     def _synthesize_llm_hints(
         self,
@@ -577,10 +777,38 @@ class WindowsSniffer(BaseSystemSniffer):
             "is_hyperv_enabled": hyperv.is_hyperv_host,
             "hyperv_guest_count": len(hyperv.guest_vms),
             "remote_probe_executed": remote_res is not None and remote_res.success,
+            "remote_probe_key": remote_res.probe_key if remote_res else None,
         }
         return hints
 
-    def analyze_host(self, host_identifier: str, run_remote_probe: bool = False, script_name: Optional[str] = None) -> HostAnalysisPayload:
+    @staticmethod
+    def _merge_probe_into_inventory(inventory: HostInventory, remote_res: Optional[RemoteExecutionResult]) -> None:
+        """
+        Enriches `HostInventory` with data from the `hardware_inventory` probe when
+        Zabbix Host Inventory fields (serial number, MAC addresses) are missing/incomplete.
+        """
+        if not remote_res or not remote_res.success or remote_res.probe_key != "hardware_inventory":
+            return
+        data = remote_res.parsed_data or {}
+        if not isinstance(data, dict):
+            return
+        if not inventory.serial_number and data.get("serial_number"):
+            inventory.serial_number = data["serial_number"]
+        if not inventory.vendor and data.get("manufacturer"):
+            inventory.vendor = data["manufacturer"]
+        if not inventory.model and data.get("model"):
+            inventory.model = data["model"]
+        for mac in data.get("mac_addresses", []) or []:
+            if mac and mac not in inventory.mac_addresses:
+                inventory.mac_addresses.append(mac)
+
+    def analyze_host(
+        self,
+        host_identifier: str,
+        run_remote_probe: bool = False,
+        script_name: Optional[str] = None,
+        probe_key: Optional[str] = None,
+    ) -> HostAnalysisPayload:
         """
         Main analytical method - orchestrates inventory, metrics, services, and builds final payload.
         """
@@ -620,7 +848,8 @@ class WindowsSniffer(BaseSystemSniffer):
         # 4. Optional Remote Probe
         remote_res: Optional[RemoteExecutionResult] = None
         if run_remote_probe:
-            remote_res = self.execute_remote_probe(host_id, script_name_or_cmd=script_name)
+            remote_res = self.execute_remote_probe(host_id, script_name_or_cmd=script_name, probe_key=probe_key)
+            self._merge_probe_into_inventory(inventory, remote_res)
 
         # 5. Build LLM Context Hints
         llm_hints = self._synthesize_llm_hints(inventory, metrics, services, hyperv, remote_res)
