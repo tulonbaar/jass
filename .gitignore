@@ -10,8 +10,5 @@ build/
 .venv/
 .pytest_cache/
 
-## Python package initialization files
-__init__.py
-
 ## Application-specific files and directories
 analysis_reports/
