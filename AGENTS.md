@@ -32,7 +32,7 @@ jass/
 │   ├── ui/
 │   │   ├── app.py             # FastAPI application and REST endpoints for the Web Dashboard
 │   │   └── templates/
-│   │       └── index.html     # Single-page Web Dashboard (Tailwind CSS, dark mode, LLM Studio)
+│   │       └── index.html     # Single-page Web Dashboard (Tailwind CSS, dark mode, vertical tabs)
 │   ├── cli.py                 # Rich CLI command-line interface with argument parser
 │   └── __init__.py            # Package root exports
 ├── tests/
@@ -92,7 +92,7 @@ jass/
   "How the Probe / Remote Execution mechanism works" section of [README.md](README.md).
 - `WindowsSniffer.execute_remote_probe()` auto-creates the corresponding Zabbix script (`script.create`)
   the first time a probe key is used, then runs it via `script.execute` and parses the result.
-- Built-in probes: `listening_ports`, `hardware_inventory` (serial number/MAC via WMI/CIM),
+- Built-in probes: `listening_ports`, `hardware_inventory` (serial number/MAC, CPUs, RAM, NICs, Disks via WMI/CIM),
   `installed_applications` (Uninstall registry keys), `event_log_errors` (System/Application logs,
   last 24h), `disk_content_scan` (top-level folders per drive, flags non-standard ones).
 

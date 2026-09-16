@@ -1,0 +1,27 @@
+version: '3.8'
+
+services:
+  jass-db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: jass
+      POSTGRES_PASSWORD: jasspassword
+      POSTGRES_DB: jassdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - jass_pgdata:/var/lib/postgresql/data
+
+  jass-app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - DATABASE_URL=postgresql://jass:jasspassword@jass-db/jassdb
+    depends_on:
+      - jass-db
+    volumes:
+      - ./.env:/app/.env
+
+volumes:
+  jass_pgdata:
