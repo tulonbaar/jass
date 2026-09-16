@@ -112,7 +112,9 @@ class WindowsSniffer(BaseSystemSniffer):
             "output": ["hostid", "host", "name", "status", "description"],
             "selectInterfaces": ["interfaceid", "ip", "dns", "port", "type", "main"],
             "selectGroups": ["groupid", "name"],
-            "selectTags": ["tag", "value"],
+            "selectHostGroups": "extend",
+            
+            "selectTags": "extend",
             "selectInventory": "extend",
         }
 
@@ -622,10 +624,25 @@ class WindowsSniffer(BaseSystemSniffer):
                     if sc.get("name", "").lower() == probe_def.zabbix_script_name.lower():
                         target_script = sc
                         break
+                
+                # Check if we need to create or update the script
                 if not target_script and auto_create_script:
                     target_script = self._ensure_probe_script(probe_def)
                     if target_script:
                         available_scripts.append(target_script)
+                elif target_script and auto_create_script and target_script.get("command") != probe_def.command:
+                    logger.info(f"Zabbix script '{probe_def.zabbix_script_name}' command is outdated. Updating it...")
+                    try:
+                        self.client.call(
+                            "script.update",
+                            {
+                                "scriptid": target_script["scriptid"],
+                                "command": probe_def.command,
+                            },
+                        )
+                        target_script["command"] = probe_def.command
+                    except ZabbixAPIException as exc:
+                        logger.warning(f"Could not auto-update Zabbix script '{probe_def.zabbix_script_name}': {exc}")
 
             elif script_name_or_cmd:
                 for sc in available_scripts:
@@ -768,6 +785,8 @@ class WindowsSniffer(BaseSystemSniffer):
             detected_roles.append("Veeam Backup & Replication Component")
         if any("exchange" in s or "msexchange" in s for s in active_service_names):
             detected_roles.append("Microsoft Exchange Mail Server")
+        if any(s in active_service_names for s in ["termservice", "tscpubrpc", "tssdis", "tsgateway", "lserver"]):
+            detected_roles.append("Remote Desktop Services (RDS) / Terminal Server")
 
         hints = {
             "detected_signatures": detected_roles,
@@ -801,6 +820,14 @@ class WindowsSniffer(BaseSystemSniffer):
         for mac in data.get("mac_addresses", []) or []:
             if mac and mac not in inventory.mac_addresses:
                 inventory.mac_addresses.append(mac)
+        if data.get("cpus"):
+            inventory.cpus = data["cpus"]
+        if data.get("ram_gb") is not None:
+            inventory.ram_gb = data["ram_gb"]
+        if data.get("nics"):
+            inventory.nics = data["nics"]
+        if data.get("disks"):
+            inventory.disks = data["disks"]
 
     def analyze_host(
         self,
@@ -821,7 +848,9 @@ class WindowsSniffer(BaseSystemSniffer):
         visible_name = host_raw.get("name", host_name)
         status_str = "Monitored" if str(host_raw.get("status")) == "0" else "Unmonitored"
 
-        host_groups = [g["name"] for g in host_raw.get("groups", []) if "name" in g]
+        # Compatibility for Zabbix <6.2 ("groups") and >=6.2 ("hostgroups")
+        raw_grps = host_raw.get("hostgroups", []) or host_raw.get("groups", [])
+        host_groups = [g["name"] for g in raw_grps if "name" in g]
         tags = [HostTag(tag=t["tag"], value=t.get("value", "")) for t in host_raw.get("tags", [])]
         interfaces = [
             HostInterface(

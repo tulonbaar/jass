@@ -34,7 +34,7 @@
         ::-webkit-scrollbar-track { background: #0f172a; }
         ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: #475569; }
-        .tab-active { border-bottom: 2px solid #22c55e; color: #22c55e; font-weight: 600; }
+        .tab-active { background-color: rgba(30, 41, 59, 0.5); border-left: 3px solid #38bdf8; color: #38bdf8; font-weight: 600; padding-left: 0.75rem; }
     </style>
 </head>
 <body class="bg-darkbg text-slate-100 min-h-screen flex flex-col font-sans">
@@ -50,7 +50,7 @@
                     <h1 class="font-bold text-lg tracking-wider text-white">JASS</h1>
                     <span class="text-xs bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-full font-mono">v1.0.0</span>
                 </div>
-                <p class="text-xs text-slate-400">Just Another System Sniffer • Windows & Hyper-V Telemetry for LLM</p>
+                <p class="text-xs text-slate-400">Just Another System Sniffer • Windows & Hyper-V Telemetry</p>
             </div>
         </div>
 
@@ -116,7 +116,7 @@
                 </div>
                 <h2 class="text-xl font-bold text-white mb-2">Select a server to perform telemetry sniffing</h2>
                 <p class="text-slate-400 text-sm max-w-md mb-6">
-                    Choose a host from the left sidebar to collect inventory, metrics, services, Hyper-V telemetry, and compile an LLM analysis payload.
+                    Choose a host from the left sidebar to collect inventory, metrics, services, Hyper-V telemetry, and view detailed telemetry.
                 </p>
                 <button onclick="openSettingsModal()" class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-lg shadow-lg shadow-brand-600/30 transition flex items-center space-x-2">
                     <i class="fa-solid fa-plug"></i>
@@ -149,24 +149,14 @@
 
                         <!-- Action Toolbar -->
                         <div class="flex flex-wrap items-center gap-2.5">
-                            <button onclick="triggerRemoteProbe()" id="btn-remote-probe" class="px-3.5 py-2 bg-purple-600/80 hover:bg-purple-600 text-white text-xs font-medium rounded-xl border border-purple-500/30 transition shadow-lg shadow-purple-600/20 flex items-center space-x-2">
-                                <i class="fa-solid fa-terminal"></i>
-                                <span>PowerShell Probe (script.execute)</span>
-                            </button>
-
                             <button onclick="rescanCurrentHost()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl border border-darkborder transition flex items-center space-x-2">
                                 <i class="fa-solid fa-arrows-rotate"></i>
                                 <span>Reload Telemetry</span>
                             </button>
 
-                            <button onclick="saveAnalysisToDisk()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl border border-darkborder transition flex items-center space-x-2">
-                                <i class="fa-solid fa-floppy-disk"></i>
-                                <span>Save JSON</span>
-                            </button>
-
-                            <button onclick="switchTab('tab-llm')" class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-bold rounded-xl shadow-lg shadow-brand-500/30 transition flex items-center space-x-2">
-                                <i class="fa-solid fa-wand-magic-sparkles"></i>
-                                <span>LLM Analysis Studio</span>
+                            <button onclick="downloadFullJson()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-medium rounded-xl border border-darkborder transition flex items-center space-x-2">
+                                <i class="fa-solid fa-file-arrow-down"></i>
+                                <span>Download JSON</span>
                             </button>
                         </div>
                     </div>
@@ -228,35 +218,59 @@
                     </div>
                 </div>
 
-                <!-- Navigation Tabs -->
-                <div class="border-b border-darkborder flex space-x-6 text-sm">
-                    <button onclick="switchTab('tab-overview')" id="btn-tab-overview" class="pb-3 text-slate-400 hover:text-slate-200 transition tab-active">
-                        <i class="fa-solid fa-chart-pie mr-1.5"></i>Overview & Disks
+                <div class="flex flex-col md:flex-row gap-6">
+                <!-- Navigation Tabs (Sidebar) -->
+                <div class="flex flex-col space-y-1 w-full md:w-56 text-sm flex-shrink-0 border-r border-darkborder/50 pr-4">
+                    <button onclick="switchTab('tab-overview')" id="btn-tab-overview" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition tab-active">
+                        <i class="fa-solid fa-chart-pie mr-2 w-4 text-center"></i>Overview
                     </button>
-                    <button onclick="switchTab('tab-services')" id="btn-tab-services" class="pb-3 text-slate-400 hover:text-slate-200 transition">
-                        <i class="fa-solid fa-list-check mr-1.5"></i>Windows Services (<span id="badge-svc-count">0</span>)
+                    <button onclick="switchTab('tab-disks')" id="btn-tab-disks" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
+                        <i class="fa-solid fa-hard-drive mr-2 w-4 text-center"></i>Disks & Content
                     </button>
-                    <button onclick="switchTab('tab-hyperv')" id="btn-tab-hyperv" class="pb-3 text-slate-400 hover:text-slate-200 transition">
-                        <i class="fa-solid fa-cubes mr-1.5"></i>Hyper-V Telemetry (<span id="badge-vm-count">0</span>)
+                    <button onclick="switchTab('tab-services')" id="btn-tab-services" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
+                        <i class="fa-solid fa-list-check mr-2 w-4 text-center"></i>Windows Services (<span id="badge-svc-count">0</span>)
                     </button>
-                    <button onclick="switchTab('tab-inventory')" id="btn-tab-inventory" class="pb-3 text-slate-400 hover:text-slate-200 transition">
-                        <i class="fa-solid fa-id-card mr-1.5"></i>Inventory & Tags
+                    <button onclick="switchTab('tab-hyperv')" id="btn-tab-hyperv" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
+                        <i class="fa-solid fa-cubes mr-2 w-4 text-center"></i>Hyper-V (<span id="badge-vm-count">0</span>)
                     </button>
-                    <button onclick="switchTab('tab-remote')" id="btn-tab-remote" class="pb-3 text-slate-400 hover:text-slate-200 transition">
-                        <i class="fa-solid fa-terminal mr-1.5"></i>Remote Probe (Ports)
+                    <button onclick="switchTab('tab-inventory')" id="btn-tab-inventory" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
+                        <i class="fa-solid fa-server mr-2 w-4 text-center"></i>Inventory
                     </button>
-                    <button onclick="switchTab('tab-llm')" id="btn-tab-llm" class="pb-3 text-slate-400 hover:text-slate-200 transition font-bold text-brand-400">
-                        <i class="fa-solid fa-brain mr-1.5"></i>LLM Studio
+                    <button onclick="switchTab('tab-groups')" id="btn-tab-groups" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
+                        <i class="fa-solid fa-layer-group mr-2 w-4 text-center"></i>Groups
+                    </button>
+                    <button onclick="switchTab('tab-apps')" id="btn-tab-apps" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
+                        <i class="fa-solid fa-box mr-2 w-4 text-center"></i>Apps
+                    </button>
+                    <button onclick="switchTab('tab-ports')" id="btn-tab-ports" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
+                        <i class="fa-solid fa-network-wired mr-2 w-4 text-center"></i>Ports
+                    </button>
+                    <button onclick="switchTab('tab-events')" id="btn-tab-events" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
+                        <i class="fa-solid fa-triangle-exclamation mr-2 w-4 text-center"></i>Events
+                    </button>
+                    <button onclick="switchTab('tab-logins')" id="btn-tab-logins" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
+                        <i class="fa-solid fa-users mr-2 w-4 text-center"></i>Logins
+                    </button>
+                    
+                    <hr class="border-darkborder/50 my-3">
+                    
+                    <button onclick="switchTab('tab-remote')" id="btn-tab-remote" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
+                        <i class="fa-solid fa-terminal mr-2 w-4 text-center"></i>Remote Probe
+                    </button>
+                    <button onclick="switchTab('tab-llm')" id="btn-tab-llm" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition font-bold text-brand-400">
+                        <i class="fa-solid fa-code mr-2 w-4 text-center"></i>JSON Info
                     </button>
                 </div>
+                
+                <div class="flex-1 min-w-0">
 
                 <!-- Tab 1: Overview & Storage -->
                 <div id="tab-overview" class="tab-pane space-y-6">
                     <!-- Detected Roles Banner -->
                     <div id="detected-roles-box" class="bg-emerald-950/30 border border-emerald-500/30 rounded-xl p-4">
                         <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center space-x-2 mb-2">
-                            <i class="fa-solid fa-wand-magic-sparkles"></i>
-                            <span>Detected Role Signatures (For LLM)</span>
+                            <i class="fa-solid fa-fingerprint"></i>
+                            <span>Detected Role Signatures</span>
                         </h4>
                         <div id="detected-roles-list" class="flex flex-wrap gap-2"></div>
                     </div>
@@ -268,6 +282,24 @@
                             <span>Storage Drives / Volumes Capacity</span>
                         </h3>
                         <div id="drives-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+                    </div>
+                </div>
+
+                <!-- Tab 2: Disks -->
+                <div id="tab-disks" class="tab-pane hidden space-y-4">
+                    <div class="bg-darkcard border border-darkborder rounded-xl p-5">
+                        <div class="flex items-center justify-between border-b border-darkborder/50 pb-2 mb-3">
+                            <h3 class="text-sm font-bold text-white flex items-center space-x-2">
+                                <i class="fa-solid fa-hard-drive text-orange-400"></i>
+                                <span>Storage Drives</span>
+                            </h3>
+                            <button onclick="triggerSpecificProbe('disk_content_scan')" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded">Scan Folders</button>
+                        </div>
+                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="drives-grid"></div>
+                        
+                        <div id="disk-folders-container" class="mt-4 text-xs text-slate-400 hidden">
+                            <!-- Folders will be injected here -->
+                        </div>
                     </div>
                 </div>
 
@@ -309,33 +341,110 @@
                         No active Hyper-V telemetry detected for this host.
                     </div>
                     <div id="hyperv-content" class="hidden space-y-4">
-                        <div class="bg-darkcard border border-darkborder rounded-xl p-5">
-                            <h3 class="text-sm font-bold text-white mb-3 flex items-center space-x-2">
-                                <i class="fa-solid fa-server text-purple-400"></i>
-                                <span>Virtual Machine Guests (Hyper-V Guest VMs)</span>
-                            </h3>
+                        <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-4">
+                            <div class="flex items-center justify-between border-b border-darkborder/50 pb-2">
+                                <h3 class="text-sm font-bold text-white flex items-center space-x-2">
+                                    <i class="fa-solid fa-server text-purple-400"></i>
+                                    <span>Virtual Machine Guests (Hyper-V Guest VMs)</span>
+                                </h3>
+                                <div class="relative w-64">
+                                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-2 text-slate-400 text-xs"></i>
+                                    <input type="text" id="vm-filter" oninput="filterVmsGrid()" placeholder="Filter VMs..." 
+                                        class="w-full bg-slate-900 border border-darkborder rounded-lg pl-8 pr-3 py-1 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
+                                </div>
+                            </div>
                             <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="hyperv-vms-grid"></div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Tab 4: Inventory & Tags -->
+                <!-- Tab: Inventory -->
                 <div id="tab-inventory" class="tab-pane hidden space-y-4">
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-3">
-                            <h3 class="text-sm font-bold text-white mb-2 flex items-center space-x-2">
+                    <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-3">
+                        <div class="flex items-center justify-between border-b border-darkborder/50 pb-2 mb-2">
+                            <h3 class="text-sm font-bold text-white flex items-center space-x-2">
                                 <i class="fa-solid fa-microchip text-cyan-400"></i>
                                 <span>Hardware & OS Details</span>
                             </h3>
-                            <div class="text-xs space-y-2 text-slate-300" id="inv-hardware-list"></div>
+                            <button onclick="triggerSpecificProbe('hardware_inventory')" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded">Run Probe</button>
                         </div>
+                        <div class="text-xs space-y-2 text-slate-300" id="inv-hardware-list">
+                            <!-- Populated via JS -->
+                        </div>
+                    </div>
+                </div>
 
-                        <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-3">
-                            <h3 class="text-sm font-bold text-white mb-2 flex items-center space-x-2">
-                                <i class="fa-solid fa-tags text-emerald-400"></i>
-                                <span>Host Tags (Zabbix Tags)</span>
+                <!-- Tab: Groups -->
+                <div id="tab-groups" class="tab-pane hidden space-y-4">
+                    <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-3">
+                        <h3 class="text-sm font-bold text-white mb-2 flex items-center space-x-2">
+                            <i class="fa-solid fa-layer-group text-emerald-400"></i>
+                            <span>Host Groups</span>
+                        </h3>
+                        <div id="inv-groups-list" class="flex flex-wrap gap-2"></div>
+                    </div>
+                </div>
+
+                <!-- Tab: Apps -->
+                <div id="tab-apps" class="tab-pane hidden space-y-4">
+                    <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-4">
+                        <div class="flex items-center justify-between border-b border-darkborder/50 pb-2">
+                            <h3 class="text-sm font-bold text-white flex items-center space-x-2">
+                                <i class="fa-solid fa-box text-blue-400"></i>
+                                <span>Installed Applications</span>
                             </h3>
-                            <div id="inv-tags-list" class="flex flex-wrap gap-2"></div>
+                            <button onclick="triggerSpecificProbe('installed_applications')" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded">Run Probe</button>
+                        </div>
+                        <div id="apps-container" class="text-xs text-slate-400">
+                            No applications data. Run the "installed_applications" remote probe to populate.
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tab: Ports -->
+                <div id="tab-ports" class="tab-pane hidden space-y-4">
+                    <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-4">
+                        <div class="flex items-center justify-between border-b border-darkborder/50 pb-2">
+                            <h3 class="text-sm font-bold text-white flex items-center space-x-2">
+                                <i class="fa-solid fa-network-wired text-purple-400"></i>
+                                <span>Listening Ports</span>
+                            </h3>
+                            <button onclick="triggerSpecificProbe('listening_ports')" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded">Run Probe</button>
+                        </div>
+                        <div id="ports-container" class="text-xs text-slate-400">
+                            No listening ports data. Run the "listening_ports" remote probe to populate.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Events -->
+                <div id="tab-events" class="tab-pane hidden space-y-4">
+                    <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-4">
+                        <div class="flex items-center justify-between border-b border-darkborder/50 pb-2">
+                            <h3 class="text-sm font-bold text-white flex items-center space-x-2">
+                                <i class="fa-solid fa-triangle-exclamation text-red-400"></i>
+                                <span>Recent Event Log Errors (24h)</span>
+                            </h3>
+                            <button onclick="triggerSpecificProbe('event_log_errors')" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded">Fetch Errors</button>
+                        </div>
+                        <div id="events-container" class="text-xs text-slate-400">
+                            No event log data. Run the "event_log_errors" remote probe to populate.
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Logins -->
+                <div id="tab-logins" class="tab-pane hidden space-y-4">
+                    <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-4">
+                        <div class="flex items-center justify-between border-b border-darkborder/50 pb-2">
+                            <h3 class="text-sm font-bold text-white flex items-center space-x-2">
+                                <i class="fa-solid fa-users text-blue-400"></i>
+                                <span>Recent Logins (7 days)</span>
+                            </h3>
+                            <button onclick="triggerSpecificProbe('recent_logins')" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded">Fetch Logins</button>
+                        </div>
+                        <div id="logins-container" class="text-xs text-slate-400">
+                            No recent logins data. Run the "recent_logins" remote probe to populate.
                         </div>
                     </div>
                 </div>
@@ -355,6 +464,9 @@
                                 <button onclick="triggerRemoteProbe()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold">
                                     Run Probe Now
                                 </button>
+                                <button onclick="runAllProbes()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold whitespace-nowrap">
+                                    Run All Probes
+                                </button>
                             </div>
                         </div>
                         <div id="remote-probe-container" class="space-y-4">
@@ -369,21 +481,21 @@
                     </div>
                 </div>
 
-                <!-- Tab 6: LLM Studio -->
+                <!-- Tab 6: JSON Info -->
                 <div id="tab-llm" class="tab-pane hidden space-y-6">
-                    <div class="bg-gradient-to-r from-emerald-950/40 via-darkcard to-purple-950/40 border border-brand-500/30 rounded-2xl p-6">
+                    <div class="bg-darkcard border border-darkborder rounded-2xl p-6">
                         <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
                             <div>
                                 <h3 class="text-lg font-bold text-white flex items-center space-x-2">
-                                    <i class="fa-solid fa-sparkles text-brand-400"></i>
-                                    <span>LLM Analysis Prompt Generator</span>
+                                    <i class="fa-solid fa-code text-brand-400"></i>
+                                    <span>Raw JSON Payload</span>
                                 </h3>
-                                <p class="text-xs text-slate-400">Copy the compiled telemetry prompt and paste into ChatGPT (GPT-4o), Claude 3.5 Sonnet, or a local Ollama model.</p>
+                                <p class="text-xs text-slate-400">View the complete structured data payload collected for this host.</p>
                             </div>
                             <div class="flex items-center space-x-3">
                                 <button onclick="copyToClipboard('llm-user-prompt-text')" class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-brand-500/20 transition flex items-center space-x-2">
                                     <i class="fa-solid fa-copy"></i>
-                                    <span>Copy Prompt to Clipboard</span>
+                                    <span>Copy JSON to Clipboard</span>
                                 </button>
                                 <button onclick="downloadFullJson()" class="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs rounded-xl border border-darkborder transition flex items-center space-x-1.5">
                                     <i class="fa-solid fa-download"></i>
@@ -392,15 +504,16 @@
                             </div>
                         </div>
 
-                        <!-- Prompt View -->
+                        <!-- JSON View -->
                         <div class="space-y-3">
-                            <label class="block text-xs font-semibold text-slate-300">User Prompt (with embedded JSON payload):</label>
                             <div class="relative">
                                 <pre id="llm-user-prompt-text" class="bg-slate-950 font-mono text-xs text-slate-300 p-4 rounded-xl border border-darkborder max-h-96 overflow-y-auto whitespace-pre-wrap"></pre>
                             </div>
                         </div>
                     </div>
                 </div>
+                </div> <!-- End Tab Panes container -->
+                </div> <!-- End Main Flex wrapper -->
 
             </div>
         </main>
@@ -678,6 +791,66 @@
             if (currentPayload) selectAndAnalyzeHost(currentPayload.host_name, false);
         }
 
+
+        function triggerSpecificProbe(probeKey) {
+            if (currentPayload) {
+                const select = document.getElementById('probe-key-select');
+                if (select) select.value = probeKey;
+                selectAndAnalyzeHost(currentPayload.host_name, true);
+            }
+        }
+
+
+        async function runAllProbes() {
+            if (!currentPayload || !currentPayload.host_name) {
+                showToast("Select a host first", "error");
+                return;
+            }
+            const probes = [
+                "listening_ports",
+                "hardware_inventory",
+                "installed_applications",
+                "event_log_errors",
+                "disk_content_scan",
+                "rds_info",
+                "recent_logins"
+            ];
+            const btn = document.querySelector('button[onclick="runAllProbes()"]');
+            const originalText = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            btn.disabled = true;
+
+            const consoleOut = document.getElementById('remote-probe-raw');
+            consoleOut.innerHTML = '';
+
+            for (const probe of probes) {
+                consoleOut.innerHTML += `<div class="text-blue-400">> Running probe: ${probe}...</div>`;
+                try {
+                    const response = await fetch('/api/analyze/host', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            host_identifier: currentPayload.host_name,
+                            run_remote_probe: true,
+                            probe_key: probe
+                        })
+                    });
+                    const data = await response.json();
+                    if (data.success && data.payload.remote_execution.success) {
+                        
+                        consoleOut.innerHTML += `<div class="text-green-400">✓ Success</div>\n`;
+                        renderHostDashboard(data.payload);
+                    } else {
+                        consoleOut.innerHTML += `<div class="text-red-400">✗ Failed: ${data.payload?.remote_execution?.error_message || 'Unknown error'}</div>\n`;
+                    }
+                } catch (e) {
+                    consoleOut.innerHTML += `<div class="text-red-400">✗ JS Error: ${e.message}</div>\n`;
+                }
+            }
+            btn.innerHTML = originalText;
+            btn.disabled = false;
+        }
+
         function triggerRemoteProbe() {
             if (currentPayload) selectAndAnalyzeHost(currentPayload.host_name, true);
         }
@@ -756,7 +929,7 @@
                     rolesContainer.appendChild(tag);
                 });
             } else {
-                rolesContainer.innerHTML = '<span class="text-xs text-slate-400">No definite single signature (full assessment in LLM Studio).</span>';
+                rolesContainer.innerHTML = '<span class="text-xs text-slate-400">No definite single signature.</span>';
             }
 
             // Drives
@@ -793,28 +966,8 @@
             if (p.hyperv.is_hyperv_host && hvVms.length > 0) {
                 document.getElementById('hyperv-warning').classList.add('hidden');
                 document.getElementById('hyperv-content').classList.remove('hidden');
-                const vmsGrid = document.getElementById('hyperv-vms-grid');
-                vmsGrid.innerHTML = '';
-                hvVms.forEach(vm => {
-                    const vmCard = document.createElement('div');
-                    vmCard.className = 'bg-slate-900 border border-darkborder rounded-xl p-4 space-y-2';
-                    const stateBadge = `<span class="px-2 py-0.5 rounded text-[11px] font-semibold ${vm.state === 'Running' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'}">${vm.state}</span>`;
-                    vmCard.innerHTML = `
-                        <div class="flex items-center justify-between">
-                            <span class="font-bold text-xs text-white block">${vm.vm_name}</span>
-                            ${stateBadge}
-                        </div>
-                        <div class="text-[10px] text-slate-400 font-mono space-y-0.5">
-                            ${vm.cpu_cores != null ? `<div>vCPU: ${vm.cpu_cores}${vm.cpu_usage_percent != null ? ` (${vm.cpu_usage_percent}%)` : ''}</div>` : ''}
-                            ${vm.memory_allocated_formatted ? `<div>RAM: ${vm.memory_allocated_formatted}${vm.memory_demand_formatted ? ` (demand: ${vm.memory_demand_formatted})` : ''}</div>` : ''}
-                            ${vm.uptime ? `<div>Uptime: ${vm.uptime}</div>` : ''}
-                            ${vm.mac_address ? `<div>MAC: ${vm.mac_address}</div>` : ''}
-                            ${vm.ip_address ? `<div>IP: ${vm.ip_address}</div>` : ''}
-                            ${vm.checkpoint_count ? `<div>Checkpoints: ${vm.checkpoint_count}</div>` : ''}
-                        </div>
-                    `;
-                    vmsGrid.appendChild(vmCard);
-                });
+                if(document.getElementById('vm-filter')) document.getElementById('vm-filter').value = '';
+                filterVmsGrid();
             } else {
                 document.getElementById('hyperv-warning').classList.remove('hidden');
                 document.getElementById('hyperv-content').classList.add('hidden');
@@ -822,6 +975,21 @@
 
             // Inventory
             const invList = document.getElementById('inv-hardware-list');
+            let cpuHtml = (p.inventory.cpus && p.inventory.cpus.length > 0) ? `<div class="flex flex-col border-b border-darkborder/40 pb-1.5"><span class="text-slate-400">CPUs:</span><span class="font-semibold text-slate-200 text-[11px]">${p.inventory.cpus.join('<br>')}</span></div>` : '';
+            let ramHtml = (p.inventory.ram_gb !== null && p.inventory.ram_gb !== undefined) ? `<div class="flex justify-between border-b border-darkborder/40 pb-1.5"><span class="text-slate-400">RAM:</span><span class="font-semibold text-slate-200">${p.inventory.ram_gb} GB</span></div>` : '';
+            
+            let nicHtml = '';
+            if (p.inventory.nics && p.inventory.nics.length > 0) {
+                let nList = p.inventory.nics.map(n => `• ${n.Name} (${n.MACAddress || 'No MAC'}) - ${n.Speed ? Math.round(n.Speed/1000000) + ' Mbps' : 'Unknown Speed'}`).join('<br>');
+                nicHtml = `<div class="flex flex-col border-b border-darkborder/40 pb-1.5"><span class="text-slate-400">Connected Network Adapters:</span><span class="font-semibold text-slate-200 text-[11px]">${nList}</span></div>`;
+            }
+            
+            let diskHtml = '';
+            if (p.inventory.disks && p.inventory.disks.length > 0) {
+                let dList = p.inventory.disks.map(d => `• ${d.Model || 'Unknown'} - ${d.Size ? Math.round(d.Size/1073741824) + ' GB' : 'Unknown Size'} (${d.InterfaceType || 'Unknown'})`).join('<br>');
+                diskHtml = `<div class="flex flex-col border-b border-darkborder/40 pb-1.5"><span class="text-slate-400">Physical Disks:</span><span class="font-semibold text-slate-200 text-[11px]">${dList}</span></div>`;
+            }
+
             invList.innerHTML = `
                 <div class="flex justify-between border-b border-darkborder/40 pb-1.5">
                     <span class="text-slate-400">Hardware / Vendor:</span>
@@ -835,20 +1003,202 @@
                     <span class="text-slate-400">Serial Number:</span>
                     <span class="font-semibold text-slate-200 font-mono">${p.inventory.serial_number || 'N/A'}</span>
                 </div>
-                <div class="flex justify-between border-b border-darkborder/40 pb-1.5">
-                    <span class="text-slate-400">MAC Addresses:</span>
-                    <span class="font-semibold text-slate-200 font-mono">${(p.inventory.mac_addresses || []).join(', ') || 'N/A'}</span>
+                ${cpuHtml}
+                ${ramHtml}
+                ${diskHtml}
+                ${nicHtml}
+                <div class="flex flex-col border-b border-darkborder/40 pb-1.5">
+                    <span class="text-slate-400">All MAC Addresses:</span>
+                    <span class="font-semibold text-slate-200 font-mono text-[10px] break-all">${(p.inventory.mac_addresses || []).join(', ') || 'N/A'}</span>
+                </div>
+                <div class="mt-2 text-[10px] text-slate-500 italic">
+                    Note: To detect connected switches, CDP/LLDP packets must be analyzed (e.g. via Wireshark). Native WMI does not provide switch information.
                 </div>
             `;
 
-            const tagsContainer = document.getElementById('inv-tags-list');
-            tagsContainer.innerHTML = '';
-            (p.tags || []).forEach(t => {
-                const tag = document.createElement('span');
-                tag.className = 'px-2.5 py-1 bg-slate-900 border border-darkborder rounded-lg text-slate-300 text-[11px]';
-                tag.innerHTML = `<span class="text-brand-400">${t.tag}:</span> ${t.value}`;
-                tagsContainer.appendChild(tag);
-            });
+            const groupsContainer = document.getElementById('inv-groups-list');
+            if (groupsContainer) {
+                groupsContainer.innerHTML = '';
+                (p.host_groups || []).forEach(g => {
+                    const tag = document.createElement('span');
+                    tag.className = 'px-2.5 py-1 bg-slate-900 border border-darkborder rounded-lg text-slate-300 text-[11px] flex items-center gap-1.5';
+                    tag.innerHTML = `<i class="fa-solid fa-layer-group text-slate-500"></i> ${g}`;
+                    groupsContainer.appendChild(tag);
+                });
+            }
+
+
+            // Cache remote execution structured data if available
+            if (p.remote_execution && p.remote_execution.success && p.remote_execution.parsed_data) {
+                if (!window.hostProbeCache) window.hostProbeCache = {};
+                if (!window.hostProbeCache[p.host_id]) window.hostProbeCache[p.host_id] = {};
+                window.hostProbeCache[p.host_id][p.remote_execution.probe_key] = p.remote_execution.parsed_data;
+            }
+
+            const cachedHostProbes = window.hostProbeCache && window.hostProbeCache[p.host_id] ? window.hostProbeCache[p.host_id] : {};
+            
+            // Render Apps
+            const appsContainer = document.getElementById('apps-container');
+            if (cachedHostProbes['installed_applications']) {
+                const apps = cachedHostProbes['installed_applications'];
+                if (Array.isArray(apps) && apps.length > 0) {
+                    let html = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">';
+                    apps.forEach(app => {
+                        html += `
+                            <div class="bg-slate-900 border border-darkborder rounded-lg p-3">
+                                <div class="font-semibold text-slate-200 truncate" title="${app.name || 'Unknown'}">${app.name || 'Unknown'}</div>
+                                <div class="text-[10px] text-slate-400 mt-1">Version: ${app.version || '-'}</div>
+                                ${app.install_location ? `<div class="text-[9px] text-slate-500 mt-0.5 truncate" title="${app.install_location}"><i class="fa-solid fa-folder-open mr-1"></i>${app.install_location}</div>` : ''}
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    appsContainer.innerHTML = html;
+                } else {
+                    appsContainer.innerHTML = '<span class="text-slate-500">No applications found in the result.</span>';
+                }
+            } else {
+                appsContainer.innerHTML = 'No applications data. Run the "installed_applications" remote probe to populate.';
+            }
+
+            // Render Ports
+            const portsContainer = document.getElementById('ports-container');
+            if (cachedHostProbes['listening_ports']) {
+                const ports = cachedHostProbes['listening_ports'];
+                if (Array.isArray(ports) && ports.length > 0) {
+                    let html = `
+                        <div class="overflow-x-auto rounded-lg border border-darkborder">
+                            <table class="w-full text-left text-xs">
+                                <thead class="bg-slate-900 text-slate-400 border-b border-darkborder">
+                                    <tr>
+                                        <th class="p-2">Local Address</th>
+                                        <th class="p-2">Port</th>
+                                        <th class="p-2">PID</th>
+                                        <th class="p-2">Process</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-darkborder/50 text-slate-300">
+                    `;
+                    ports.forEach(port => {
+                        html += `
+                            <tr class="hover:bg-slate-900/50">
+                                <td class="p-2 font-mono">${port.address || port.raw_entry || '-'}</td>
+                                <td class="p-2 font-bold text-purple-400">${port.port || '-'}</td>
+                                <td class="p-2 text-slate-400">${port.owning_pid || '-'}</td>
+                                <td class="p-2 text-slate-400 font-mono">${port.process || '-'}</td>
+                            </tr>
+                        `;
+                    });
+                    html += '</tbody></table></div>';
+                    portsContainer.innerHTML = html;
+                } else {
+                    portsContainer.innerHTML = '<span class="text-slate-500">No listening ports found in the result.</span>';
+                }
+            } else {
+                portsContainer.innerHTML = 'No listening ports data. Run the "listening_ports" remote probe to populate.';
+            }
+
+
+            // Render Events
+            const eventsContainer = document.getElementById('events-container');
+            if (cachedHostProbes['event_log_errors']) {
+                const events = cachedHostProbes['event_log_errors'];
+                if (Array.isArray(events) && events.length > 0) {
+                    let html = `
+                        <div class="overflow-x-auto rounded-lg border border-darkborder">
+                            <table class="w-full text-left text-xs">
+                                <thead class="bg-slate-900 text-slate-400 border-b border-darkborder">
+                                    <tr>
+                                        <th class="p-2 w-32">Time</th>
+                                        <th class="p-2 w-24">Log</th>
+                                        <th class="p-2 w-16">ID</th>
+                                        <th class="p-2 w-24">Source</th>
+                                        <th class="p-2">Message</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-darkborder/50 text-slate-300">
+                    `;
+                    events.forEach(ev => {
+                        html += `
+                            <tr class="hover:bg-slate-900/50">
+                                <td class="p-2 whitespace-nowrap text-[10px]">${new Date(ev.time).toLocaleString() || '-'}</td>
+                                <td class="p-2">${ev.log_name || '-'}</td>
+                                <td class="p-2 text-red-400 font-mono">${ev.event_id || '-'}</td>
+                                <td class="p-2 text-slate-400 truncate max-w-[100px]" title="${ev.source}">${ev.source || '-'}</td>
+                                <td class="p-2 text-slate-400 text-[10px] break-words">${ev.message || '-'}</td>
+                            </tr>
+                        `;
+                    });
+                    html += '</tbody></table></div>';
+                    eventsContainer.innerHTML = html;
+                } else {
+                    eventsContainer.innerHTML = '<span class="text-slate-500">No events found.</span>';
+                }
+            }
+
+            // Render Logins
+            const loginsContainer = document.getElementById('logins-container');
+            if (cachedHostProbes['recent_logins']) {
+                const logins = cachedHostProbes['recent_logins'];
+                if (Array.isArray(logins) && logins.length > 0) {
+                    let html = `
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    `;
+                    logins.forEach(login => {
+                        html += `
+                            <div class="bg-slate-900 border border-darkborder rounded-lg p-3 flex flex-col items-center justify-center">
+                                <i class="fa-solid fa-user text-slate-500 mb-2 text-xl"></i>
+                                <div class="font-bold text-slate-200 text-center truncate w-full" title="${login.user}">${login.user}</div>
+                                <div class="text-xs text-blue-400 mt-1">${login.count} logins</div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    loginsContainer.innerHTML = html;
+                } else {
+                    loginsContainer.innerHTML = '<span class="text-slate-500">No logins found.</span>';
+                }
+            }
+
+            // Render Disk Content
+            const diskFoldersContainer = document.getElementById('disk-folders-container');
+            if (cachedHostProbes['disk_content_scan']) {
+                diskFoldersContainer.classList.remove('hidden');
+                const folders = cachedHostProbes['disk_content_scan'];
+                if (Array.isArray(folders) && folders.length > 0) {
+                    // Group by drive
+                    const drives = {};
+                    folders.forEach(f => {
+                        if (!drives[f.drive]) drives[f.drive] = [];
+                        drives[f.drive].push(f);
+                    });
+                    let html = '<div class="space-y-4">';
+                    for (const [drive, fList] of Object.entries(drives)) {
+                        html += `
+                            <div class="bg-slate-900 rounded-lg p-3 border border-darkborder/50">
+                                <div class="font-bold text-orange-400 mb-2 border-b border-darkborder/50 pb-1">Drive ${drive}</div>
+                                <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+                        `;
+                        fList.forEach(f => {
+                            let icon = f.is_standard ? '<i class="fa-solid fa-folder text-slate-500 mr-2"></i>' : '<i class="fa-solid fa-folder text-yellow-500 mr-2"></i>';
+                            let subs = f.subfolders ? `<div class="text-[9px] text-slate-500 ml-5 mt-1 truncate" title="${f.subfolders}">↳ ${f.subfolders}</div>` : '';
+                            html += `
+                                <div class="text-[11px] text-slate-300 bg-slate-800/50 p-1.5 rounded">
+                                    <div class="flex items-center">${icon}${f.folder}</div>
+                                    ${subs}
+                                </div>
+                            `;
+                        });
+                        html += '</div></div>';
+                    }
+                    html += '</div>';
+                    diskFoldersContainer.innerHTML = html;
+                } else {
+                    diskFoldersContainer.innerHTML = '<span class="text-slate-500">No folder data found.</span>';
+                }
+            } else {
+                diskFoldersContainer.classList.add('hidden');
+            }
 
             // Remote Execution
             const remoteRaw = document.getElementById('remote-probe-raw');
@@ -866,7 +1216,7 @@
             }
 
             // LLM Studio
-            document.getElementById('llm-user-prompt-text').innerText = llmPrompt || JSON.stringify(p, null, 2);
+            document.getElementById('llm-user-prompt-text').innerText = JSON.stringify(p, null, 2);
         }
 
         function renderServicesTable(services) {
@@ -904,10 +1254,43 @@
             renderServicesTable(allServices);
         }
 
+        
+        function filterVmsGrid() {
+            if (!currentPayload || !currentPayload.hyperv || !currentPayload.hyperv.guest_vms) return;
+            const q = document.getElementById('vm-filter').value.toLowerCase();
+            const vms = currentPayload.hyperv.guest_vms;
+            
+            const vmsGrid = document.getElementById('hyperv-vms-grid');
+            vmsGrid.innerHTML = '';
+            vms.forEach(vm => {
+                if (!(vm.vm_name || "").toLowerCase().includes(q)) return;
+                
+                const vmCard = document.createElement('div');
+                vmCard.className = 'bg-slate-900 border border-darkborder rounded-xl p-4 space-y-2';
+                const stateBadge = `<span class="px-2 py-0.5 rounded text-[11px] font-semibold ${vm.state === 'Running' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' : 'bg-slate-800 text-slate-400'}">${vm.state}</span>`;
+                
+                let uptimeHtml = '';
+                if (vm.state === 'Running') {
+                    uptimeHtml = `<div class="text-[11px] text-slate-400"><i class="fa-regular fa-clock w-3"></i> ${vm.uptime}</div>`;
+                }
+
+                vmCard.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <div class="font-bold text-sm text-white truncate pr-2" title="${vm.vm_name}">${vm.vm_name}</div>
+                        ${stateBadge}
+                    </div>
+                    ${uptimeHtml}
+                    <div class="text-[11px] text-slate-400"><i class="fa-solid fa-memory w-3"></i> ${vm.memory_allocated_formatted || 'N/A'}</div>
+                    <div class="text-[11px] text-slate-400"><i class="fa-solid fa-microchip w-3"></i> ${vm.cpu_usage_percent !== null ? vm.cpu_usage_percent + '%' : 'N/A'} CPU</div>
+                `;
+                vmsGrid.appendChild(vmCard);
+            });
+        }
+
         function filterServicesTable() {
             const q = document.getElementById('svc-filter').value.toLowerCase();
             const matched = (currentPayload.windows_services || []).filter(s => 
-                s.name.toLowerCase().includes(q) || (s.display_name && s.display_name.toLowerCase().includes(q))
+                (s.name || "").toLowerCase().includes(q) || (s.display_name && s.display_name.toLowerCase().includes(q))
             );
             allServices = matched;
             renderServicesTable(allServices);
@@ -926,7 +1309,7 @@
         function copyToClipboard(elementId) {
             const text = document.getElementById(elementId).innerText;
             navigator.clipboard.writeText(text).then(() => {
-                showToast('Copied LLM prompt to clipboard!');
+                showToast('Copied to clipboard!');
             }).catch(err => {
                 showToast('Clipboard copy error', true);
             });

@@ -13,6 +13,11 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+
+from jass.db.database import init_db, SessionLocal
+from jass.db.models import HostTelemetry, HostDiscovery
+import json
+
 from pydantic import BaseModel
 import uvicorn
 
@@ -28,6 +33,11 @@ app = FastAPI(
     description="Windows & Hyper-V Telemetry Sniffer and LLM Analysis Hub",
     version="1.0.0",
 )
+
+@app.on_event("startup")
+def on_startup():
+    init_db()
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -188,9 +198,33 @@ async def api_analyze_host(req: AnalyzeHostRequest):
             script_name=req.script_name,
             probe_key=req.probe_key,
         )
-        state["cached_payloads"][payload.host_name] = payload
-        state["cached_payloads"][payload.host_id] = payload
 
+        # Update cache in DB
+        db = SessionLocal()
+        try:
+            telemetry = db.query(HostTelemetry).filter(HostTelemetry.host_id == payload.host_id).first()
+            if not telemetry:
+                telemetry = HostTelemetry(host_id=payload.host_id, host_name=payload.host_name)
+                db.add(telemetry)
+            
+            # Store payload dict
+            telemetry.payload = payload.model_dump()
+            db.commit()
+            
+            # If there was a probe execution, save it to history
+            if payload.remote_execution and payload.remote_execution.success:
+                disc = HostDiscovery(
+                    host_id=payload.host_id,
+                    probe_key=payload.remote_execution.probe_key,
+                    data=payload.remote_execution.parsed_data
+                )
+                db.add(disc)
+                db.commit()
+        except Exception as e:
+            db.rollback()
+            logger.error(f"DB save error: {e}")
+        finally:
+            db.close()
         return {
             "success": True,
             "payload": payload.model_dump(),

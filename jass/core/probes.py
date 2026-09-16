@@ -75,18 +75,14 @@ def parse_listening_ports(output: str) -> Any:
                 "address": row.get("LocalAddress"),
                 "port": row.get("LocalPort"),
                 "owning_pid": row.get("OwningProcess"),
+                "process": row.get("Process"),
             }
             for row in rows
             if isinstance(row, dict)
         ]
+    return []
 
-    # Fallback: plain-text netstat/table output.
-    ports = []
-    for line in output.strip().splitlines():
-        match = re.search(r"(?:TCP|UDP)?\s*([0-9.\*]+|\[::\]|::):(\d+)", line.strip(), re.IGNORECASE)
-        if match:
-            ports.append({"address": match.group(1), "port": int(match.group(2)), "raw_entry": line.strip()})
-    return ports
+
 
 
 def parse_hardware_inventory(output: str) -> Any:
@@ -102,6 +98,10 @@ def parse_hardware_inventory(output: str) -> Any:
         "manufacturer": parsed.get("Manufacturer"),
         "model": parsed.get("Model"),
         "mac_addresses": [m for m in macs if m],
+        "cpus": parsed.get("CPUs") if isinstance(parsed.get("CPUs"), list) else ([parsed.get("CPUs")] if parsed.get("CPUs") else []),
+        "ram_gb": parsed.get("RAM_GB"),
+        "nics": parsed.get("NICs") if isinstance(parsed.get("NICs"), list) else ([parsed.get("NICs")] if parsed.get("NICs") else []),
+        "disks": parsed.get("Disks") if isinstance(parsed.get("Disks"), list) else ([parsed.get("Disks")] if parsed.get("Disks") else []),
     }
 
 
@@ -117,6 +117,7 @@ def parse_installed_applications(output: str) -> Any:
             "version": row.get("DisplayVersion"),
             "publisher": row.get("Publisher"),
             "install_date": row.get("InstallDate"),
+            "install_location": row.get("InstallLocation"),
         }
         for row in rows
         if isinstance(row, dict) and row.get("DisplayName")
@@ -144,22 +145,47 @@ def parse_event_log_errors(output: str) -> Any:
 
 
 def parse_disk_content_scan(output: str) -> Any:
-    """Parses top-level folder listing per drive, flagging non-standard folders."""
+    """Parses top-level folder listing per drive with direct subfolders."""
     parsed = _safe_json_loads(output)
     if parsed is None:
         return []
     rows = parsed if isinstance(parsed, list) else [parsed]
-    folders = [
+    return [
         {
             "drive": row.get("Drive"),
             "folder": row.get("Folder"),
             "is_standard": bool(row.get("Standard")),
+            "subfolders": row.get("Subfolders", ""),
         }
         for row in rows
         if isinstance(row, dict) and row.get("Folder")
     ]
-    non_standard = [f for f in folders if not f["is_standard"]]
-    return {"all_folders": folders, "non_standard_folders": non_standard}
+
+
+
+def parse_rds_info(output: str) -> Any:
+    """Parses Remote Desktop Services (RDS) configuration."""
+    parsed = _safe_json_loads(output)
+    if parsed is None:
+        return {}
+    if isinstance(parsed, list):
+        return parsed[0] if parsed else {}
+    return parsed
+
+def parse_recent_logins(output: str) -> Any:
+    """Parses recent user login counts."""
+    parsed = _safe_json_loads(output)
+    if parsed is None:
+        return []
+    rows = parsed if isinstance(parsed, list) else [parsed]
+    return [
+        {
+            "user": row.get("Name"),
+            "count": row.get("Count"),
+        }
+        for row in rows
+        if isinstance(row, dict) and row.get("Name")
+    ]
 
 
 @dataclass(frozen=True)
@@ -182,21 +208,25 @@ PROBE_CATALOG: dict[str, ProbeDefinition] = {
         description="Lists TCP ports in LISTEN state and the owning process id.",
         command=(
             f'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "{_PS_PREAMBLE} '
-            "Get-NetTCPConnection -State Listen | Select-Object LocalAddress,LocalPort,OwningProcess "
-            '| ConvertTo-Json -Compress"'
+            "$c = Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue; "
+            "if ($c) { $res = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue; if ($res) { $res | Select-Object LocalAddress,LocalPort,OwningProcess,@{N='Process';E={(Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName}} | ConvertTo-Json -Compress; exit } }; "
+            "$ports = netstat -ano -p tcp | Select-String -Pattern 'LISTEN|NAS'; $out=@(); foreach ($p in $ports) { $m = [regex]::Match($p.Line, '.*?([0-9.\\[\\]:]+):(\\d+).*?\\s+(\\d+)$'); if ($m.Success) { $pid = $m.Groups[3].Value; $proc = (Get-Process -Id $pid -ErrorAction SilentlyContinue).ProcessName; $out += [PSCustomObject]@{LocalAddress=$m.Groups[1].Value;LocalPort=$m.Groups[2].Value;OwningProcess=$pid;Process=$proc} } }; $out | ConvertTo-Json -Compress\""
         ),
         parser=parse_listening_ports,
     ),
     "hardware_inventory": ProbeDefinition(
         key="hardware_inventory",
-        zabbix_script_name="JASS - Hardware Inventory (Serial/MAC)",
-        description="Retrieves BIOS serial number, manufacturer/model and MAC addresses via WMI/CIM.",
+        zabbix_script_name="JASS - Hardware Extended Inventory",
+        description="Retrieves BIOS serial, manufacturer/model, CPUs, RAM, connected NICs, and Disks.",
         command=(
             f'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "{_PS_PREAMBLE} '
-            "$bios = Get-CimInstance Win32_BIOS; $cs = Get-CimInstance Win32_ComputerSystem; "
-            "$nics = Get-CimInstance Win32_NetworkAdapterConfiguration -Filter 'IPEnabled=True'; "
-            "[PSCustomObject]@{SerialNumber=$bios.SerialNumber;Manufacturer=$cs.Manufacturer;Model=$cs.Model;"
-            'MacAddresses=@($nics | ForEach-Object { $_.MACAddress })} | ConvertTo-Json -Compress"'
+            "$bios = Get-CimInstance Win32_BIOS -ErrorAction SilentlyContinue; "
+            "$cs = Get-CimInstance Win32_ComputerSystem -ErrorAction SilentlyContinue; "
+            "$cpus = @(Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Name); "
+            "$ram = if ($cs) { [math]::Round($cs.TotalPhysicalMemory / 1GB, 2) } else { 0 }; "
+            "$nics = @(Get-CimInstance Win32_NetworkAdapter -ErrorAction SilentlyContinue | Where-Object { $_.NetConnectionStatus -eq 2 } | Select-Object Name, MACAddress, Speed); "
+            "$disks = @(Get-CimInstance Win32_DiskDrive -ErrorAction SilentlyContinue | Select-Object Model, Size, InterfaceType); "
+            "[PSCustomObject]@{SerialNumber=$bios.SerialNumber; Manufacturer=$cs.Manufacturer; Model=$cs.Model; CPUs=$cpus; RAM_GB=$ram; NICs=$nics; Disks=$disks; MacAddresses=@($nics | ForEach-Object { $_.MACAddress })} | ConvertTo-Json -Depth 4 -Compress\""
         ),
         parser=parse_hardware_inventory,
     ),
@@ -209,7 +239,7 @@ PROBE_CATALOG: dict[str, ProbeDefinition] = {
             "$paths = 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*',"
             "'HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'; "
             "Get-ItemProperty $paths -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName } | "
-            "Select-Object DisplayName,DisplayVersion,Publisher,InstallDate | Sort-Object DisplayName "
+            "Select-Object DisplayName,DisplayVersion,Publisher,InstallDate,InstallLocation | Sort-Object DisplayName "
             '| ConvertTo-Json -Compress"'
         ),
         parser=parse_installed_applications,
@@ -222,7 +252,7 @@ PROBE_CATALOG: dict[str, ProbeDefinition] = {
             f'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "{_PS_PREAMBLE} '
             "Get-WinEvent -FilterHashtable @{LogName='System','Application';Level=1,2;"
             "StartTime=(Get-Date).AddHours(-24)} -MaxEvents 50 -ErrorAction SilentlyContinue | "
-            "Select-Object TimeCreated,LogName,Id,LevelDisplayName,ProviderName,Message "
+            "Select-Object @{N='TimeCreated';E={$_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')}},LogName,Id,LevelDisplayName,ProviderName,Message "
             '| ConvertTo-Json -Compress -Depth 3"'
         ),
         parser=parse_event_log_errors,
@@ -237,11 +267,37 @@ PROBE_CATALOG: dict[str, ProbeDefinition] = {
             "'$Recycle.Bin','System Volume Information','PerfLogs'; "
             "Get-PSDrive -PSProvider FileSystem | ForEach-Object { $d = $_.Root; "
             "Get-ChildItem -Path $d -Directory -ErrorAction SilentlyContinue | ForEach-Object { "
-            "[PSCustomObject]@{Drive=$d;Folder=$_.Name;Standard=($known -contains $_.Name)} } } "
+            "$subs = ''; try { $subs = ([System.IO.Directory]::EnumerateDirectories($_.FullName) | ForEach-Object { [System.IO.Path]::GetFileName($_) }) -join ', ' } catch {}; [PSCustomObject]@{Drive=$d;Folder=$_.Name;Standard=($known -contains $_.Name);Subfolders=$subs} } } "
             '| ConvertTo-Json -Compress"'
         ),
         parser=parse_disk_content_scan,
     ),
+    "rds_info": ProbeDefinition(
+        key="rds_info",
+        zabbix_script_name="JASS - RDS Information",
+        description="Retrieves Remote Desktop Services (RDS) configuration, licenses, installed roles, and active sessions.",
+        command=(
+            f'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "{_PS_PREAMBLE} '
+            "$ts = Get-ItemProperty -Path 'HKLM:\\System\\CurrentControlSet\\Control\\Terminal Server' -ErrorAction SilentlyContinue; "
+            "$rdp = Get-ItemProperty -Path 'HKLM:\\System\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp' -ErrorAction SilentlyContinue; "
+            "$qwinsta = (qwinsta.exe 2>$null) -join [Environment]::NewLine; "
+            "[PSCustomObject]@{TSEnabled=($ts.fDenyTSConnections -eq 0);Port=$rdp.PortNumber;Sessions=$qwinsta} | ConvertTo-Json -Compress"
+        ),
+        parser=parse_rds_info,
+    ),
+    "recent_logins": ProbeDefinition(
+        key="recent_logins",
+        zabbix_script_name="JASS - Recent Logins (7 days)",
+        description="Retrieves counts of interactive logins per user over the last 7 days.",
+        command=(
+            f'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "{_PS_PREAMBLE} '
+            "$events = Get-WinEvent -FilterHashtable @{LogName='Security';ID=4624;StartTime=(Get-Date).AddDays(-7)} -ErrorAction SilentlyContinue; "
+            "$events | ForEach-Object { if ($_.Properties.Count -gt 8 -and ($_.Properties[8].Value -in 2,10)) { "
+            "$user = $_.Properties[5].Value; if ($user -notmatch 'UMFD|DWM') { [PSCustomObject]@{User=$user} } } } "
+            '| Group-Object User | Select-Object Name, Count | ConvertTo-Json -Compress"'
+        ),
+        parser=parse_recent_logins,
+    )
 }
 
 

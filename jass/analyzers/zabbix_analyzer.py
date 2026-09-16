@@ -88,6 +88,7 @@ class ZabbixAnalyzer:
             "output": ["hostid", "host", "name", "status", "description"],
             "selectInterfaces": ["ip", "dns"],
             "selectGroups": ["groupid", "name"],
+            "selectHostGroups": ["groupid", "name"],
         }
         if group_ids:
             params["groupids"] = group_ids

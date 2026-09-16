@@ -9,7 +9,7 @@
 
 JASS generates structured, normalized JSON payloads (`[hostname]_analysis.json`) optimized as high-density context for Large Language Models (**LLMs** such as OpenAI GPT-4o, Anthropic Claude 3.5 Sonnet, DeepSeek, and Ollama) to autonomously classify business roles, audit system health, and diagnose infrastructure architectures.
 
-The tool provides both an interactive **Rich CLI interface** and a modern **Web Dashboard (FastAPI + Tailwind CSS)** featuring an integrated **LLM Prompt Studio**.
+The tool provides both an interactive **Rich CLI interface** and a modern **Web Dashboard (FastAPI + Tailwind CSS)** featuring an integrated **JSON Payload viewer**.
 
 ---
 
@@ -40,7 +40,7 @@ The tool provides both an interactive **Rich CLI interface** and a modern **Web 
 
 4. **Interactive Web Dashboard**:
    - Responsive web UI built on FastAPI and Tailwind CSS.
-   - Real-time host search, hostgroup filtering, live metrics visualization, storage gauge charts, service filtering, remote probe execution, and LLM Studio.
+   - Real-time host search, hostgroup filtering, live metrics visualization, storage gauge charts, service filtering, remote probe execution, and JSON Payload Viewer.
 
 5. **Extensible Modular Architecture (OOP)**:
    - Abstract `BaseSystemSniffer` module allows developers and AI agents to easily add new telemetry collectors (e.g., Linux, VMware ESXi, Proxmox, Network Appliances).

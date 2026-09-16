@@ -13,6 +13,8 @@ from jass.core.probes import (
     parse_hardware_inventory,
     parse_installed_applications,
     parse_listening_ports,
+    parse_rds_info,
+    parse_recent_logins,
 )
 
 
@@ -47,18 +49,18 @@ class TestProbeParsers(unittest.TestCase):
         self.assertEqual(len(parsed), 1)
         self.assertEqual(parsed[0]["port"], 443)
 
-    def test_parse_listening_ports_plain_text_fallback(self):
-        raw = "TCP    0.0.0.0:3389    0.0.0.0:0    LISTENING"
-        parsed = parse_listening_ports(raw)
-        self.assertEqual(len(parsed), 1)
-        self.assertEqual(parsed[0]["port"], 3389)
+
 
     def test_parse_hardware_inventory(self):
-        raw = '{"SerialNumber":"ABC123","Manufacturer":"HPE","Model":"ProLiant DL380","MacAddresses":["AA:BB:CC:DD:EE:FF"]}'
+        raw = '{"SerialNumber":"ABC123","Manufacturer":"HPE","Model":"ProLiant DL380","MacAddresses":["AA:BB:CC:DD:EE:FF"],"CPUs":["Intel Xeon"],"RAM_GB":32.5,"NICs":[{"Name":"NIC1","MACAddress":"AA"}],"Disks":[{"Model":"Disk1","Size":123}]}'
         parsed = parse_hardware_inventory(raw)
         self.assertEqual(parsed["serial_number"], "ABC123")
         self.assertEqual(parsed["manufacturer"], "HPE")
         self.assertEqual(parsed["mac_addresses"], ["AA:BB:CC:DD:EE:FF"])
+        self.assertEqual(parsed["cpus"], ["Intel Xeon"])
+        self.assertEqual(parsed["ram_gb"], 32.5)
+        self.assertEqual(len(parsed["nics"]), 1)
+        self.assertEqual(len(parsed["disks"]), 1)
 
     def test_parse_hardware_inventory_ignores_powershell_noise(self):
         raw = 'WARNING: some noisy line\n{"SerialNumber":"XYZ","Manufacturer":"Dell","Model":"R750","MacAddresses":[]}\n'
@@ -90,8 +92,8 @@ class TestProbeParsers(unittest.TestCase):
             '{"Drive":"D:\\\\","Folder":"SQLData","Standard":false}]'
         )
         parsed = parse_disk_content_scan(raw)
-        self.assertEqual(len(parsed["all_folders"]), 3)
-        non_standard_names = {f["folder"] for f in parsed["non_standard_folders"]}
+        self.assertEqual(len(parsed), 3)
+        non_standard_names = {f["folder"] for f in parsed if not f.get("is_standard")}
         self.assertEqual(non_standard_names, {"MyCustomApp", "SQLData"})
 
     def test_parsers_handle_empty_output_gracefully(self):
@@ -104,3 +106,16 @@ class TestProbeParsers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+    def test_parse_recent_logins(self):
+        raw = '[{"Name":"Administrator","Count":5},{"Name":"User","Count":1}]'
+        parsed = parse_recent_logins(raw)
+        self.assertEqual(len(parsed), 2)
+        self.assertEqual(parsed[0]["Name"], "Administrator")
+        self.assertEqual(parsed[0]["Count"], 5)
+
+    def test_parse_rds_info(self):
+        raw = '{"TSEnabled":true,"Port":3389,"Sessions":"active session"}'
+        parsed = parse_rds_info(raw)
+        self.assertEqual(parsed["TSEnabled"], True)
+        self.assertEqual(parsed["Port"], 3389)

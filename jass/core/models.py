@@ -38,6 +38,10 @@ class HostInventory(BaseModel):
     vendor: Optional[str] = None
     model: Optional[str] = None
     mac_addresses: List[str] = Field(default_factory=list)
+    cpus: List[str] = Field(default_factory=list)
+    ram_gb: Optional[float] = None
+    nics: List[Dict[str, Any]] = Field(default_factory=list)
+    disks: List[Dict[str, Any]] = Field(default_factory=list)
     ip_addresses: List[str] = Field(default_factory=list)
     location: Optional[str] = None
     contact: Optional[str] = None
