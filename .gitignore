@@ -12,3 +12,6 @@ build/
 
 ## Application-specific files and directories
 analysis_reports/
+
+## VS Code
+.vscode/

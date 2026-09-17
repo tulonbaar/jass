@@ -39,6 +39,8 @@ def on_startup():
     init_db()
 
 
+from fastapi.staticfiles import StaticFiles
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -46,6 +48,14 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static directory for prober.exe downloads
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+from jass.ui.routers import prober
+app.include_router(prober.router)
 
 # Global session state and cache
 state: Dict[str, Any] = {

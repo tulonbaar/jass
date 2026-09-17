@@ -441,7 +441,10 @@
                                 <i class="fa-solid fa-users text-blue-400"></i>
                                 <span>Recent Logins (7 days)</span>
                             </h3>
-                            <button onclick="triggerSpecificProbe('recent_logins')" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded">Fetch Logins</button>
+                            <div class="flex items-center gap-2">
+                                <button onclick="triggerSpecificProbe('recent_logins')" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded">Standard Zabbix Probe</button>
+                                <button onclick="triggerProberDeploy('recent_logins')" class="text-[10px] bg-brand-600 hover:bg-brand-500 text-white px-3 py-1 rounded font-bold shadow-lg shadow-brand-500/20">Launch via Prober (Async)</button>
+                            </div>
                         </div>
                         <div id="logins-container" class="text-xs text-slate-400">
                             No recent logins data. Run the "recent_logins" remote probe to populate.
@@ -791,6 +794,31 @@
             if (currentPayload) selectAndAnalyzeHost(currentPayload.host_name, false);
         }
 
+
+        async function triggerProberDeploy(scriptName) {
+            if (!currentPayload) return;
+            showToast(`Deploying ephemeral Prober to ${currentPayload.host_name}...`);
+            try {
+                // Here we mock sending a script. Real script comes from DB in final version.
+                const mockScript = "Get-EventLog -LogName Security -Newest 10 | ConvertTo-Json"; 
+                const res = await fetch('/api/prober/deploy', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ host_identifier: currentPayload.host_name, script_content: mockScript })
+                });
+
+                if (!res.ok) {
+                    const err = await res.json();
+                    showToast(`Prober deploy error: ${err.detail || 'Unknown error'}`, true);
+                    return;
+                }
+
+                const data = await res.json();
+                showToast(`Prober deployed to ${data.ip}:${data.port}. Execution in background.`);
+            } catch (e) {
+                showToast(`Error: ${e.message}`, true);
+            }
+        }
 
         function triggerSpecificProbe(probeKey) {
             if (currentPayload) {
