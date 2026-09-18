@@ -1,32 +1,62 @@
-from sqlalchemy import Column, Integer, String, Boolean, Float, DateTime, JSON, Text, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Text, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 from jass.db.database import Base
 from datetime import datetime
 
-class HostTelemetry(Base):
-    """Stores the latest state of Zabbix resources for a host."""
-    __tablename__ = "host_telemetry"
+class PropertyCategory(Base):
+    """Kategorie grupujące właściwości hosta (np. Overview, Disks, Apps)."""
+    __tablename__ = "property_categories"
 
     id = Column(Integer, primary_key=True, index=True)
-    host_id = Column(String, unique=True, index=True)
-    host_name = Column(String)
+    name = Column(String, unique=True, index=True)
+    display_name = Column(String)
+    order = Column(Integer, default=0)
+
+    properties = relationship("HostProperty", back_populates="category", cascade="all, delete-orphan")
+
+
+class HostProperty(Base):
+    """Definicja właściwości hosta."""
+    __tablename__ = "host_properties"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True)  # np. 'listening_ports', 'os_version'
+    display_name = Column(String)
+    description = Column(String, nullable=True)
+    data_type = Column(String, default="string") # string, number, boolean, json, list
+    
+    category_id = Column(Integer, ForeignKey("property_categories.id"))
+    category = relationship("PropertyCategory", back_populates="properties")
+
+    values = relationship("HostPropertyValue", back_populates="property", cascade="all, delete-orphan")
+    metric_mappings = relationship("ZabbixMetricMapping", back_populates="property", cascade="all, delete-orphan")
+
+
+class HostPropertyValue(Base):
+    """Konkretna wartość właściwości przypisana do hosta."""
+    __tablename__ = "host_property_values"
+
+    id = Column(Integer, primary_key=True, index=True)
+    host_id = Column(String, index=True) # Powiązanie z host.hostid z Zabbixa
+    property_id = Column(Integer, ForeignKey("host_properties.id"))
+    
+    # Dane zachowujemy jako JSON, z którego UI odczyta wartość zgodnie z type
+    value = Column(JSON, nullable=True)
+    
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # Store full JSON structure of HostAnalysisPayload
-    # Because resources change fast, we overwrite the same row for host_id
-    payload = Column(JSON)
 
-class HostDiscovery(Base):
-    """Stores historical discovery data (apps, ports, folders, logins) from Probes."""
-    __tablename__ = "host_discoveries"
+    property = relationship("HostProperty", back_populates="values")
+
+
+class ZabbixMetricMapping(Base):
+    """Mapowanie metryk pobieranych z Zabbix na HostProperty."""
+    __tablename__ = "zabbix_metric_mappings"
 
     id = Column(Integer, primary_key=True, index=True)
-    host_id = Column(String, index=True)
-    probe_key = Column(String, index=True)
-    discovered_at = Column(DateTime, default=datetime.utcnow)
+    zabbix_item_key = Column(String, index=True) # np. 'system.cpu.util'
+    property_id = Column(Integer, ForeignKey("host_properties.id"))
     
-    # The output JSON from the probe
-    data = Column(JSON)
+    property = relationship("HostProperty", back_populates="metric_mappings")
 
 
 class ProberParser(Base):
@@ -36,29 +66,34 @@ class ProberParser(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
     description = Column(String, nullable=True)
-    parser_type = Column(String)  # np. 'regex', 'python'
-    code = Column(Text)  # Kod Pythona lub wyrażenie regularne
+    
+    # Kod Pythona w którym musi być funkcja `def parse(output): return dict(...)`
+    code = Column(Text)  
+    
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relacja odwrotna
-    scripts = relationship("ProberScript", back_populates="default_parser")
+    tasks = relationship("ProberTask", back_populates="parser")
 
 
-class ProberScript(Base):
-    """Skrypty PowerShell wysyłane jako payload do Probera."""
-    __tablename__ = "prober_scripts"
+class ProberTask(Base):
+    """Zadania (skrypty) wysyłane jako payload do Probera."""
+    __tablename__ = "prober_tasks"
 
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
     description = Column(String, nullable=True)
-    content = Column(Text)  # Kod źródłowy PowerShell
+    script_type = Column(String, default="powershell") # powershell, cmd, bash
+    content = Column(Text)  # Kod źródłowy
+    
+    # Czy wynik powinien być mapowany na właściwości hosta?
+    map_to_properties = Column(Boolean, default=True)
+
+    parser_id = Column(Integer, ForeignKey("prober_parsers.id"), nullable=True)
+    parser = relationship("ProberParser", back_populates="tasks")
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-
-    # Opcjonalny domyślny parser dla tego skryptu
-    default_parser_id = Column(Integer, ForeignKey("prober_parsers.id"), nullable=True)
-    default_parser = relationship("ProberParser", back_populates="scripts")
 
 
 class ProberHostConfig(Base):
@@ -68,6 +103,10 @@ class ProberHostConfig(Base):
     id = Column(Integer, primary_key=True, index=True)
     host_id = Column(String, unique=True, index=True) # Powiązanie z host.hostid z Zabbixa
     port = Column(Integer, default=8443)
+    psk = Column(String) # Losowy PSK wygenerowany do połączenia
     ttl_seconds = Column(Integer, default=3600)  # Czas życia efemerycznego agenta (np. 1 godzina)
+    is_active = Column(Boolean, default=False)
+    last_launched = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

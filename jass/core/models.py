@@ -127,7 +127,7 @@ class HyperVData(BaseModel):
 class RemoteExecutionResult(BaseModel):
     """Result of remote script execution via Zabbix API (script.execute)."""
     script_name: str
-    probe_key: Optional[str] = None  # Key from jass.core.probes.PROBE_CATALOG, if a known probe was used
+    probe_key: Optional[str] = None  # Key from ProberTask name, if a known probe was used
     command: Optional[str] = None
     executed_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
     success: bool = True

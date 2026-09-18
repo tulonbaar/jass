@@ -15,7 +15,6 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from jass.db.database import init_db, SessionLocal
-from jass.db.models import HostTelemetry, HostDiscovery
 import json
 
 from pydantic import BaseModel
@@ -34,9 +33,12 @@ app = FastAPI(
     version="1.0.0",
 )
 
+from jass.db.seeds import seed_db
+
 @app.on_event("startup")
 def on_startup():
     init_db()
+    seed_db()
 
 
 from fastapi.staticfiles import StaticFiles
@@ -54,8 +56,10 @@ static_dir = Path(__file__).parent / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-from jass.ui.routers import prober
+from jass.ui.routers import prober, admin, host_properties
 app.include_router(prober.router)
+app.include_router(admin.router)
+app.include_router(host_properties.router)
 
 # Global session state and cache
 state: Dict[str, Any] = {
@@ -209,32 +213,7 @@ async def api_analyze_host(req: AnalyzeHostRequest):
             probe_key=req.probe_key,
         )
 
-        # Update cache in DB
-        db = SessionLocal()
-        try:
-            telemetry = db.query(HostTelemetry).filter(HostTelemetry.host_id == payload.host_id).first()
-            if not telemetry:
-                telemetry = HostTelemetry(host_id=payload.host_id, host_name=payload.host_name)
-                db.add(telemetry)
-            
-            # Store payload dict
-            telemetry.payload = payload.model_dump()
-            db.commit()
-            
-            # If there was a probe execution, save it to history
-            if payload.remote_execution and payload.remote_execution.success:
-                disc = HostDiscovery(
-                    host_id=payload.host_id,
-                    probe_key=payload.remote_execution.probe_key,
-                    data=payload.remote_execution.parsed_data
-                )
-                db.add(disc)
-                db.commit()
-        except Exception as e:
-            db.rollback()
-            logger.error(f"DB save error: {e}")
-        finally:
-            db.close()
+
         return {
             "success": True,
             "payload": payload.model_dump(),
@@ -264,6 +243,14 @@ async def get_index():
     if template_path.exists():
         return HTMLResponse(content=template_path.read_text(encoding="utf-8"))
     return HTMLResponse(content="<h1>JASS UI Template Not Found</h1>", status_code=404)
+
+@app.get("/admin", response_class=HTMLResponse)
+async def get_admin():
+    """Serves the Admin Configuration interface."""
+    template_path = Path(__file__).parent / "templates" / "admin.html"
+    if template_path.exists():
+        return HTMLResponse(content=template_path.read_text(encoding="utf-8"))
+    return HTMLResponse(content="<h1>JASS Admin Template Not Found</h1>", status_code=404)
 
 
 def start_ui_server(

@@ -21,7 +21,7 @@ from rich import box
 from jass.analyzers.zabbix_analyzer import ZabbixAnalyzer
 from jass.core.client import ZabbixAPIException, ZabbixAuthException
 from jass.core.models import HostAnalysisPayload
-from jass.core.probes import PROBE_CATALOG, list_probe_keys
+
 from jass.core.prompt_builder import LLMPromptBuilder
 
 console = Console()
@@ -139,8 +139,7 @@ def build_parser() -> argparse.ArgumentParser:
     exec_group.add_argument("--script", help="Specific Zabbix script name to execute during remote probe")
     exec_group.add_argument(
         "--probe",
-        choices=list_probe_keys(),
-        help="Built-in probe to run (auto-creates the matching Zabbix script if missing). Takes precedence over --script.",
+        help="Built-in probe to run (runs ProberTask from DB). Takes precedence over --script.",
     )
     exec_group.add_argument("--list-probes", action="store_true", help="List built-in probes from the JASS probe catalog and exit")
     exec_group.add_argument("--prompt", action="store_true", help="Also generate LLM prompt markdown file ([host_name]_prompt.md)")
@@ -165,16 +164,21 @@ def run_cli(args: Optional[List[str]] = None) -> int:
     setup_logging(verbose=parsed_args.verbose)
     print_banner()
 
-    # List built-in probes (no Zabbix connection required)
     if parsed_args.list_probes:
-        table = Table(title="JASS Built-in Probe Catalog", box=box.SIMPLE_HEAVY)
-        table.add_column("Key", style="cyan")
-        table.add_column("Zabbix Script Name", style="yellow")
-        table.add_column("Description", style="white")
-        for p in sorted(PROBE_CATALOG.values(), key=lambda x: x.key):
-            table.add_row(p.key, p.zabbix_script_name, p.description)
-        console.print(table)
-        console.print("\nRun with [cyan]--remote-probe --probe <key>[/cyan] to execute one against a host.")
+        from jass.db.database import SessionLocal
+        from jass.db.models import ProberTask
+        db = SessionLocal()
+        try:
+            tasks = db.query(ProberTask).all()
+            table = Table(title="JASS Built-in Prober Tasks", box=box.SIMPLE_HEAVY)
+            table.add_column("Task Name", style="cyan")
+            table.add_column("Description", style="white")
+            for t in sorted(tasks, key=lambda x: x.name):
+                table.add_row(t.name, t.description or "")
+            console.print(table)
+            console.print("\nRun with [cyan]--remote-probe --probe <name>[/cyan] to execute one against a host.")
+        finally:
+            db.close()
         return 0
 
     # Web UI mode

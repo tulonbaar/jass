@@ -24,7 +24,6 @@ from jass.core.models import (
     RemoteExecutionResult,
     WindowsService,
 )
-from jass.core.probes import ProbeDefinition, get_probe, list_probe_keys, parse_listening_ports
 
 logger = logging.getLogger("jass.modules.windows")
 
@@ -593,168 +592,91 @@ class WindowsSniffer(BaseSystemSniffer):
         auto_create_script: bool = True,
     ) -> Optional[RemoteExecutionResult]:
         """
-        Executes a remote diagnostic script on host agent via Zabbix API (`script.execute`).
-        Captures the 'value' returned from the agent and, for known probes, parses it into
-        structured data (see `jass.core.probes.PROBE_CATALOG`).
-
-        Resolution order for which Zabbix script to run:
-        1. `probe_key` - a known probe from `PROBE_CATALOG` (e.g. "listening_ports",
-           "hardware_inventory"). If the matching Zabbix script does not exist yet, it is
-           auto-created via `script.create` (requires Zabbix admin permissions).
-        2. `script_name_or_cmd` - an explicit Zabbix script name or scriptid to run as-is.
-        3. Heuristic fallback - the first script whose name looks like a diagnostic probe.
-
-        Note: Zabbix's `script.execute` can only run scripts that already exist as Zabbix
-        "Script" objects (Data collection -> Scripts, scope "Manual host action") - JASS
-        cannot send arbitrary code straight to an agent, that boundary is enforced by Zabbix.
+        Executes a remote diagnostic script on host agent via ProberClient.
         """
-        logger.info(f"Executing remote probe on hostid={host_id} (script.execute)...")
+        logger.info(f"Executing remote task on hostid={host_id} (ProberClient)...")
 
-        probe_def = get_probe(probe_key) if probe_key else None
-        if probe_key and probe_def is None:
-            logger.warning(f"Unknown probe_key '{probe_key}'. Available: {list_probe_keys()}")
+        from jass.db.database import SessionLocal
+        from jass.db.models import ProberTask
+        from jass.core.prober_client import ProberClient
 
+        db = SessionLocal()
         try:
-            # 1. Fetch available scripts for host (script.get)
-            available_scripts = self.client.call("script.get", {"hostids": [host_id]})
-            target_script = None
-
-            if probe_def:
-                for sc in available_scripts:
-                    if sc.get("name", "").lower() == probe_def.zabbix_script_name.lower():
-                        target_script = sc
-                        break
-                
-                # Check if we need to create or update the script
-                if not target_script and auto_create_script:
-                    target_script = self._ensure_probe_script(probe_def)
-                    if target_script:
-                        available_scripts.append(target_script)
-                elif target_script and auto_create_script and target_script.get("command") != probe_def.command:
-                    logger.info(f"Zabbix script '{probe_def.zabbix_script_name}' command is outdated. Updating it...")
-                    try:
-                        self.client.call(
-                            "script.update",
-                            {
-                                "scriptid": target_script["scriptid"],
-                                "command": probe_def.command,
-                            },
-                        )
-                        target_script["command"] = probe_def.command
-                    except ZabbixAPIException as exc:
-                        logger.warning(f"Could not auto-update Zabbix script '{probe_def.zabbix_script_name}': {exc}")
-
+            target_task = None
+            if probe_key:
+                target_task = db.query(ProberTask).filter(ProberTask.name == probe_key).first()
             elif script_name_or_cmd:
-                for sc in available_scripts:
-                    if sc.get("name", "").lower() == script_name_or_cmd.lower() or sc.get("scriptid") == script_name_or_cmd:
-                        target_script = sc
-                        break
+                target_task = db.query(ProberTask).filter(ProberTask.name == script_name_or_cmd).first()
 
-            if not target_script and available_scripts and not probe_def:
-                # Find first matching diagnostic script (heuristic fallback)
-                for sc in available_scripts:
-                    sc_name = sc.get("name", "").lower()
-                    if any(term in sc_name for term in ["port", "probe", "powershell", "netstat", "tcp", "sniffer", "diag"]):
-                        target_script = sc
-                        break
-                if not target_script:
-                    target_script = available_scripts[0]
-
-            if not target_script:
-                logger.warning(f"No matching scripts found in Zabbix for hostid={host_id}.")
+            if not target_task:
+                logger.warning(f"Unknown task/probe_key. DB has no matching ProberTask.")
                 return None
 
-            script_id = target_script["scriptid"]
-            script_name = target_script.get("name", f"Script_{script_id}")
-            logger.info(f"Running Zabbix script '{script_name}' (ID: {script_id})...")
+            # Find target IP via zabbix
+            interfaces = self.client.call("hostinterface.get", {"output": ["ip"], "hostids": host_id})
+            target_ip = interfaces[0]["ip"] if interfaces else None
+            if not target_ip:
+                logger.error(f"Cannot find IP interface for host {host_id}")
+                return None
 
-            # 2. Call script.execute
-            exec_params = {
-                "scriptid": script_id,
-                "hostid": host_id,
-            }
-            exec_res = self.client.call("script.execute", exec_params)
+            client = ProberClient(host_id=host_id, host_ip=target_ip)
+            if not client.is_alive():
+                logger.error(f"Prober is not alive on {target_ip}. Cannot execute task.")
+                return RemoteExecutionResult(
+                    script_name=target_task.name,
+                    probe_key=probe_key,
+                    success=False,
+                    error_message="Prober is not alive on target host.",
+                )
 
-            raw_output = ""
-            if isinstance(exec_res, dict):
-                raw_output = exec_res.get("value", "")
-            elif isinstance(exec_res, str):
-                raw_output = exec_res
+            logger.info(f"Running Prober task '{target_task.name}'...")
+            result = client.execute_script(target_task.content)
+            
+            success = result.get("exit_code") == 0
+            raw_output = result.get("stdout", "")
+            if not success:
+                logger.error(f"Task failed: {result.get('stderr')}")
+                return RemoteExecutionResult(
+                    script_name=target_task.name,
+                    probe_key=probe_key,
+                    success=False,
+                    raw_output=raw_output,
+                    error_message=result.get("stderr"),
+                )
 
-            # 3. Parse output using the probe's dedicated parser, if known
-            parsed_ports: List[Dict[str, Any]] = []
             parsed_data: Any = None
-            if probe_def:
-                parsed_data = probe_def.parser(raw_output)
-                if probe_def.key == "listening_ports" and isinstance(parsed_data, list):
-                    parsed_ports = parsed_data
-            else:
-                parsed_ports = parse_listening_ports(raw_output)
+            if target_task.parser_id:
+                try:
+                    local_env = {}
+                    exec(target_task.parser.code, {}, local_env)
+                    if "parse" in local_env:
+                        parsed_data = local_env["parse"](raw_output)
+                except Exception as e:
+                    logger.error(f"Parser error: {e}")
+
+            parsed_ports: List[Dict[str, Any]] = []
+            if probe_key == "listening_ports" and isinstance(parsed_data, list):
+                parsed_ports = parsed_data
 
             return RemoteExecutionResult(
-                script_name=script_name,
-                probe_key=probe_def.key if probe_def else None,
-                command=target_script.get("command"),
+                script_name=target_task.name,
+                probe_key=probe_key,
+                command=target_task.content,
                 success=True,
                 raw_output=raw_output,
                 parsed_listening_ports=parsed_ports,
                 parsed_data=parsed_data,
             )
-
-        except ZabbixAPIException as exc:
+        except Exception as exc:
             logger.error(f"Remote script execution error on hostid={host_id}: {exc}")
             return RemoteExecutionResult(
-                script_name=script_name_or_cmd or (probe_def.zabbix_script_name if probe_def else "Unknown"),
+                script_name=script_name_or_cmd or probe_key or "Unknown",
                 probe_key=probe_key,
                 success=False,
                 error_message=str(exc),
             )
-
-    def _ensure_probe_script(self, probe_def: "ProbeDefinition") -> Optional[Dict[str, Any]]:
-        """
-        Creates the Zabbix "Script" object for a known probe if it does not already exist
-        (`script.create`). Requires the connected user to have Zabbix admin/super-admin rights.
-        Returns the created script dict, or None if creation failed (e.g. insufficient rights) -
-        in that case the administrator should create it manually in Zabbix using
-        `probe_def.command` as the command, "Zabbix agent" as the execution target, and
-        "Manual host action" as the scope.
-        """
-        logger.info(f"Zabbix script '{probe_def.zabbix_script_name}' not found - attempting to create it (script.create)...")
-        try:
-            created = self.client.call(
-                "script.create",
-                {
-                    "name": probe_def.zabbix_script_name,
-                    "command": probe_def.command,
-                    "type": 0,  # 0 = Script
-                    "scope": 2,  # 2 = Manual host action (required for script.execute)
-                    "execute_on": 0,  # 0 = Zabbix agent
-                    "description": probe_def.description,
-                },
-            )
-            new_id = None
-            if isinstance(created, dict):
-                ids = created.get("scriptids") or []
-                new_id = ids[0] if ids else None
-            if not new_id:
-                return None
-            return {
-                "scriptid": new_id,
-                "name": probe_def.zabbix_script_name,
-                "command": probe_def.command,
-            }
-        except ZabbixAPIException as exc:
-            logger.warning(
-                f"Could not auto-create Zabbix script '{probe_def.zabbix_script_name}': {exc}. "
-                "Create it manually in Zabbix (Data collection -> Scripts) using the command from "
-                "jass.core.probes.PROBE_CATALOG, or ask an administrator to grant script.create permissions."
-            )
-            return None
-
-    @staticmethod
-    def _parse_listening_ports(output: str) -> List[Dict[str, Any]]:
-        """Deprecated: use `jass.core.probes.parse_listening_ports` instead. Kept for compatibility."""
-        return parse_listening_ports(output)
+        finally:
+            db.close()
 
     def _synthesize_llm_hints(
         self,

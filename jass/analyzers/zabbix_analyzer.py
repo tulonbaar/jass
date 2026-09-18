@@ -13,7 +13,6 @@ from typing import Any, Dict, List, Optional, Union
 
 from jass.core.client import ZabbixAPIException, ZabbixClient
 from jass.core.models import HostAnalysisPayload
-from jass.core.probes import PROBE_CATALOG
 from jass.core.prompt_builder import LLMPromptBuilder
 from jass.modules.windows_sniffer import WindowsSniffer
 
@@ -112,7 +111,7 @@ class ZabbixAnalyzer:
         :param host_identifier: Technical host name, visible name, or hostid
         :param run_remote_probe: Whether to execute remote probe via script.execute
         :param script_name: Name of predefined Zabbix script
-        :param probe_key: Key from `jass.core.probes.PROBE_CATALOG` (e.g. "hardware_inventory",
+        :param probe_key: Name from `ProberTask` DB model (e.g. "hardware_inventory",
             "installed_applications", "event_log_errors", "disk_content_scan"). Takes precedence
             over `script_name`; the matching Zabbix script is auto-created if missing.
         :return: Structured HostAnalysisPayload object
@@ -225,11 +224,18 @@ class ZabbixAnalyzer:
 
     @staticmethod
     def list_available_probes() -> List[Dict[str, str]]:
-        """Lists all built-in remote probes (`jass.core.probes.PROBE_CATALOG`) with their descriptions."""
-        return [
-            {"key": p.key, "zabbix_script_name": p.zabbix_script_name, "description": p.description}
-            for p in sorted(PROBE_CATALOG.values(), key=lambda x: x.key)
-        ]
+        """Lists all built-in remote probes from DB with their descriptions."""
+        from jass.db.database import SessionLocal
+        from jass.db.models import ProberTask
+        db = SessionLocal()
+        try:
+            tasks = db.query(ProberTask).all()
+            return [
+                {"key": t.name, "zabbix_script_name": t.name, "description": t.description}
+                for t in sorted(tasks, key=lambda x: x.name)
+            ]
+        finally:
+            db.close()
 
     def close(self) -> None:
         """Closes client session."""

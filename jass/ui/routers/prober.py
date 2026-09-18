@@ -19,42 +19,6 @@ class DeployRequest(BaseModel):
     port: int = 8443
     ttl: int = 3600
 
-def run_prober_job(host_ip: str, psk: str, port: int, ttl: int, script: str):
-    """Background job that pings the prober and executes the script when ready."""
-    logger.info(f"Starting prober job for {host_ip}:{port}")
-    # Ping loop
-    ready = False
-    for i in range(30):
-        try:
-            resp = requests.get(f"http://{host_ip}:{port}/ping", timeout=2)
-            if resp.status_code == 200 and resp.text == "PONG":
-                ready = True
-                break
-        except Exception:
-            pass
-        time.sleep(1)
-
-    if not ready:
-        logger.error(f"Prober on {host_ip}:{port} did not become ready.")
-        return
-
-    logger.info(f"Prober ready on {host_ip}:{port}. Sending script...")
-    
-    # Send script
-    payload = {"script": script}
-    encrypted_data = encrypt_payload(payload, psk)
-    
-    try:
-        # Long timeout for execution
-        resp = requests.post(f"http://{host_ip}:{port}/execute", data=encrypted_data, timeout=ttl)
-        if resp.status_code == 200:
-            result = decrypt_payload(resp.content, psk)
-            logger.info(f"Prober execution finished on {host_ip}")
-            # TODO: save result to DB or state
-        else:
-            logger.error(f"Prober execute failed: {resp.status_code}")
-    except Exception as e:
-        logger.error(f"Prober connection lost or error: {e}")
 
 @router.post("/deploy")
 async def deploy_prober(req: DeployRequest, request: Request, background_tasks: BackgroundTasks):
@@ -124,6 +88,77 @@ Start-Process -WindowStyle Hidden -FilePath 'C:\\Windows\\Temp\\prober.exe' -Arg
         logger.error(f"Failed to execute dropper: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to execute dropper: {e}")
     
-    background_tasks.add_task(run_prober_job, target_ip, psk, req.port, req.ttl, req.script_content)
+    # Save PSK and TTL in DB
+    from jass.core.prober_client import ProberClient
+    client = ProberClient(host_id=host_info["hostid"], host_ip=target_ip)
+    client.update_psk(psk, req.ttl)
+    client.close()
     
+    # We no longer run script automatically here, we just deploy it. Wait for it to become alive via separate ping loop.
     return {"status": "deployed", "ip": target_ip, "port": req.port, "ttl": req.ttl}
+
+from jass.core.prober_client import ProberClient
+from jass.db.models import ProberTask, HostProperty, HostPropertyValue
+from jass.db.database import SessionLocal
+
+@router.post("/execute-task/{task_id}")
+async def execute_task(task_id: int, req: DeployRequest):
+    # This assumes prober is already deployed.
+    # req.host_identifier is the host ID
+    db = SessionLocal()
+    try:
+        task = db.query(ProberTask).filter(ProberTask.id == task_id).first()
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+
+        analyzer = main_app.get_or_create_analyzer()
+        hosts = analyzer.list_hosts(search=req.host_identifier)
+        if not hosts:
+            raise HTTPException(status_code=404, detail="Host not found in Zabbix")
+        
+        host_info = hosts[0]
+        host_id = host_info["hostid"]
+        interfaces = analyzer.client.call("hostinterface.get", {"output": ["ip"], "hostids": host_id})
+        target_ip = interfaces[0]["ip"] if interfaces else None
+
+        client = ProberClient(host_id=host_id, host_ip=target_ip)
+        if not client.is_alive():
+            raise HTTPException(status_code=400, detail="Prober is not alive on this host")
+
+        # Execute script
+        result = client.execute_script(task.content)
+        
+        # Check success
+        if result.get("exit_code") != 0:
+            return {"status": "error", "error": result.get("stderr")}
+
+        # Parsing and Mapping
+        parsed_data = {}
+        if task.parser_id:
+            try:
+                # Dynamic exec of parser code
+                local_env = {}
+                exec(task.parser.code, {}, local_env)
+                if "parse" in local_env:
+                    parsed_data = local_env["parse"](result.get("stdout", ""))
+                else:
+                    logger.error("Parser code does not define a 'parse' function")
+            except Exception as e:
+                logger.error(f"Failed to parse output: {e}")
+                return {"status": "error", "error": f"Parser error: {e}"}
+        
+        # Mapping to HostPropertyValue
+        if task.map_to_properties and parsed_data:
+            for prop_name, value in parsed_data.items():
+                prop = db.query(HostProperty).filter_by(name=prop_name).first()
+                if prop:
+                    val_record = db.query(HostPropertyValue).filter_by(host_id=host_id, property_id=prop.id).first()
+                    if not val_record:
+                        val_record = HostPropertyValue(host_id=host_id, property_id=prop.id)
+                        db.add(val_record)
+                    val_record.value = value
+            db.commit()
+
+        return {"status": "success", "parsed_data": parsed_data, "raw_stdout": result.get("stdout")}
+    finally:
+        db.close()

@@ -66,6 +66,11 @@
                 <i class="fa-solid fa-gear text-slate-400"></i>
                 <span>Zabbix API Settings</span>
             </button>
+            
+            <a href="/admin" class="px-3 py-1.5 text-xs bg-brand-600 hover:bg-brand-500 text-white font-bold border border-brand-500 rounded-lg transition flex items-center space-x-1.5 shadow-lg shadow-brand-500/20">
+                <i class="fa-solid fa-screwdriver-wrench"></i>
+                <span>Admin Panel</span>
+            </a>
         </div>
     </header>
 
@@ -220,49 +225,23 @@
 
                 <div class="flex flex-col md:flex-row gap-6">
                 <!-- Navigation Tabs (Sidebar) -->
-                <div class="flex flex-col space-y-1 w-full md:w-56 text-sm flex-shrink-0 border-r border-darkborder/50 pr-4">
+                <div class="flex flex-col space-y-1 w-full md:w-56 text-sm flex-shrink-0 border-r border-darkborder/50 pr-4" id="dynamic-tabs-nav">
                     <button onclick="switchTab('tab-overview')" id="btn-tab-overview" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition tab-active">
                         <i class="fa-solid fa-chart-pie mr-2 w-4 text-center"></i>Overview
                     </button>
-                    <button onclick="switchTab('tab-disks')" id="btn-tab-disks" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
-                        <i class="fa-solid fa-hard-drive mr-2 w-4 text-center"></i>Disks & Content
-                    </button>
-                    <button onclick="switchTab('tab-services')" id="btn-tab-services" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
-                        <i class="fa-solid fa-list-check mr-2 w-4 text-center"></i>Windows Services (<span id="badge-svc-count">0</span>)
-                    </button>
-                    <button onclick="switchTab('tab-hyperv')" id="btn-tab-hyperv" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
-                        <i class="fa-solid fa-cubes mr-2 w-4 text-center"></i>Hyper-V (<span id="badge-vm-count">0</span>)
-                    </button>
-                    <button onclick="switchTab('tab-inventory')" id="btn-tab-inventory" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
-                        <i class="fa-solid fa-server mr-2 w-4 text-center"></i>Inventory
-                    </button>
-                    <button onclick="switchTab('tab-groups')" id="btn-tab-groups" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
-                        <i class="fa-solid fa-layer-group mr-2 w-4 text-center"></i>Groups
-                    </button>
-                    <button onclick="switchTab('tab-apps')" id="btn-tab-apps" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
-                        <i class="fa-solid fa-box mr-2 w-4 text-center"></i>Apps
-                    </button>
-                    <button onclick="switchTab('tab-ports')" id="btn-tab-ports" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
-                        <i class="fa-solid fa-network-wired mr-2 w-4 text-center"></i>Ports
-                    </button>
-                    <button onclick="switchTab('tab-events')" id="btn-tab-events" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
-                        <i class="fa-solid fa-triangle-exclamation mr-2 w-4 text-center"></i>Events
-                    </button>
-                    <button onclick="switchTab('tab-logins')" id="btn-tab-logins" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
-                        <i class="fa-solid fa-users mr-2 w-4 text-center"></i>Logins
-                    </button>
+                    <!-- Other tabs will be dynamically injected here via JS -->
                     
                     <hr class="border-darkborder/50 my-3">
                     
                     <button onclick="switchTab('tab-remote')" id="btn-tab-remote" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
-                        <i class="fa-solid fa-terminal mr-2 w-4 text-center"></i>Remote Probe
+                        <i class="fa-solid fa-terminal mr-2 w-4 text-center"></i>Tasks
                     </button>
                     <button onclick="switchTab('tab-llm')" id="btn-tab-llm" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition font-bold text-brand-400">
                         <i class="fa-solid fa-code mr-2 w-4 text-center"></i>JSON Info
                     </button>
                 </div>
                 
-                <div class="flex-1 min-w-0">
+                <div class="flex-1 min-w-0" id="dynamic-tabs-content">
 
                 <!-- Tab 1: Overview & Storage -->
                 <div id="tab-overview" class="tab-pane space-y-6">
@@ -452,23 +431,26 @@
                     </div>
                 </div>
 
-                <!-- Tab 5: Remote Execution -->
+                <!-- Tab 5: Remote Execution (Tasks) -->
                 <div id="tab-remote" class="tab-pane hidden space-y-4">
                     <div class="bg-darkcard border border-darkborder rounded-xl p-5">
                         <div class="flex items-center justify-between mb-4">
                             <h3 class="text-sm font-bold text-white flex items-center space-x-2">
                                 <i class="fa-solid fa-network-wired text-purple-400"></i>
-                                <span>Remote Execution Output (script.execute / PowerShell)</span>
+                                <span>Prober Tasks Execution</span>
                             </h3>
                             <div class="flex items-center gap-2">
                                 <select id="probe-key-select" class="bg-slate-900 border border-darkborder rounded-lg text-xs text-slate-200 px-2 py-1.5">
                                     <option value="">Heuristic (any diagnostic script)</option>
                                 </select>
                                 <button onclick="triggerRemoteProbe()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold">
-                                    Run Probe Now
+                                    Run Task Now
+                                </button>
+                                <button onclick="triggerProberDeploy()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5">
+                                    <i class="fa-solid fa-play"></i> Run Prober
                                 </button>
                                 <button onclick="runAllProbes()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold whitespace-nowrap">
-                                    Run All Probes
+                                    Run All Tasks
                                 </button>
                             </div>
                         </div>
@@ -795,16 +777,25 @@
         }
 
 
-        async function triggerProberDeploy(scriptName) {
+        async function triggerProberDeploy() {
             if (!currentPayload) return;
+            
+            const port = prompt("Enter Prober listening port:", "8443");
+            if (!port) return;
+            const ttl = prompt("Enter Prober TTL in seconds:", "3600");
+            if (!ttl) return;
+            
             showToast(`Deploying ephemeral Prober to ${currentPayload.host_name}...`);
             try {
-                // Here we mock sending a script. Real script comes from DB in final version.
-                const mockScript = "Get-EventLog -LogName Security -Newest 10 | ConvertTo-Json"; 
                 const res = await fetch('/api/prober/deploy', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ host_identifier: currentPayload.host_name, script_content: mockScript })
+                    body: JSON.stringify({ 
+                        host_identifier: currentPayload.host_name, 
+                        script_content: '',
+                        port: parseInt(port),
+                        ttl: parseInt(ttl)
+                    })
                 });
 
                 if (!res.ok) {
@@ -871,10 +862,12 @@
                     } else {
                         consoleOut.innerHTML += `<div class="text-red-400">✗ Failed: ${data.payload?.remote_execution?.error_message || 'Unknown error'}</div>\n`;
                     }
-                } catch (e) {
-                    consoleOut.innerHTML += `<div class="text-red-400">✗ JS Error: ${e.message}</div>\n`;
+                } catch (err) {
+                    consoleOut.innerHTML += `<div class="text-red-400">✗ Network error: ${err.message}</div>\n`;
                 }
             }
+            
+            consoleOut.innerHTML += `<div class="text-yellow-400">> All selected probes finished.</div>`;
             btn.innerHTML = originalText;
             btn.disabled = false;
         }
@@ -902,7 +895,75 @@
             }
         }
 
+        async function loadDynamicProperties(hostId) {
+            try {
+                const res = await fetch(`/api/host-properties/${hostId}`);
+                if (!res.ok) return;
+                const data = await res.json();
+                
+                const navContainer = document.getElementById('dynamic-tabs-nav');
+                const contentContainer = document.getElementById('dynamic-tabs-content');
+                
+                // Keep static buttons but remove previously generated dynamic tabs
+                document.querySelectorAll('.dynamic-cat-btn').forEach(e => e.remove());
+                document.querySelectorAll('.dynamic-cat-pane').forEach(e => e.remove());
+                
+                // Add new tabs
+                const insertBeforeNode = document.querySelector('hr.border-darkborder\\/50.my-3');
+                
+                data.categories.forEach(cat => {
+                    const tabId = `tab-dyn-${cat.id}`;
+                    
+                    // Create nav button
+                    const btn = document.createElement('button');
+                    btn.onclick = () => switchTab(tabId);
+                    btn.id = `btn-${tabId}`;
+                    btn.className = "dynamic-cat-btn py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition";
+                    btn.innerHTML = `<i class="fa-solid fa-list mr-2 w-4 text-center"></i>${cat.display_name}`;
+                    navContainer.insertBefore(btn, insertBeforeNode);
+                    
+                    // Create pane
+                    const pane = document.createElement('div');
+                    pane.id = tabId;
+                    pane.className = "tab-pane hidden space-y-6 dynamic-cat-pane";
+                    
+                    let propsHtml = '';
+                    cat.properties.forEach(prop => {
+                        let val = prop.value;
+                        if (val == null) val = '-';
+                        else if (typeof val === 'object') val = '<pre class="text-xs mt-2 bg-slate-900 p-2 rounded border border-darkborder/50 text-slate-300 overflow-x-auto">' + JSON.stringify(val, null, 2) + '</pre>';
+                        else val = `<span class="font-bold text-slate-200 break-all">${val}</span>`;
+                        
+                        propsHtml += `
+                            <div class="bg-slate-900/40 border border-darkborder rounded-xl p-4">
+                                <div class="text-xs text-slate-400 uppercase tracking-wider mb-1">${prop.display_name}</div>
+                                <div class="text-sm text-slate-300">${prop.description || ''}</div>
+                                <div class="mt-2">${val}</div>
+                            </div>
+                        `;
+                    });
+                    
+                    if(cat.properties.length === 0) {
+                        propsHtml = '<div class="text-slate-500 italic p-4 text-center bg-slate-900/20 rounded-xl border border-darkborder border-dashed">No properties in this category</div>';
+                    }
+                    
+                    pane.innerHTML = `
+                        <div class="bg-darkcard border border-darkborder rounded-2xl p-6 shadow-xl">
+                            <h3 class="text-lg font-bold text-white mb-4 border-b border-darkborder/50 pb-2 flex items-center">
+                                <i class="fa-solid fa-folder text-brand-400 mr-2"></i> ${cat.display_name}
+                            </h3>
+                            <div class="grid grid-cols-1 gap-4">${propsHtml}</div>
+                        </div>
+                    `;
+                    contentContainer.appendChild(pane);
+                });
+            } catch (e) {
+                console.error("Error loading dynamic properties:", e);
+            }
+        }
+
         function renderHostDashboard(p, llmPrompt) {
+            loadDynamicProperties(p.host_id);
             // Header
             document.getElementById('host-header-name').innerText = p.host_name;
             document.getElementById('host-header-status').innerText = p.status;
@@ -941,68 +1002,86 @@
             }
 
             const runningCount = (p.windows_services || []).filter(s => s.state === 'Running').length;
-            document.getElementById('stat-services-val').innerText = runningCount;
-            document.getElementById('badge-svc-count').innerText = (p.windows_services || []).length;
-            document.getElementById('stat-uptime-val').innerText = p.metrics.uptime_formatted || 'N/A';
+            const elSvcVal = document.getElementById('stat-services-val');
+            if (elSvcVal) elSvcVal.innerText = runningCount;
+            
+            const elSvcCount = document.getElementById('badge-svc-count');
+            if (elSvcCount) elSvcCount.innerText = (p.windows_services || []).length;
+            
+            const elUptime = document.getElementById('stat-uptime-val');
+            if (elUptime) elUptime.innerText = p.metrics.uptime_formatted || 'N/A';
 
             // Detected Roles
-            const roles = p.llm_context_hints.detected_signatures || [];
+            const roles = p.llm_context_hints?.detected_signatures || [];
             const rolesContainer = document.getElementById('detected-roles-list');
-            rolesContainer.innerHTML = '';
-            if (roles.length > 0) {
-                roles.forEach(r => {
-                    const tag = document.createElement('span');
-                    tag.className = 'px-3 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold text-xs flex items-center space-x-1.5';
-                    tag.innerHTML = `<i class="fa-solid fa-check"></i><span>${r}</span>`;
-                    rolesContainer.appendChild(tag);
-                });
-            } else {
-                rolesContainer.innerHTML = '<span class="text-xs text-slate-400">No definite single signature.</span>';
+            if (rolesContainer) {
+                rolesContainer.innerHTML = '';
+                if (roles.length > 0) {
+                    roles.forEach(r => {
+                        const tag = document.createElement('span');
+                        tag.className = 'px-3 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 font-bold text-xs flex items-center space-x-1.5';
+                        tag.innerHTML = `<i class="fa-solid fa-check"></i><span>${r}</span>`;
+                        rolesContainer.appendChild(tag);
+                    });
+                } else {
+                    rolesContainer.innerHTML = '<span class="text-xs text-slate-400">No definite single signature.</span>';
+                }
             }
 
             // Drives
             const drivesContainer = document.getElementById('drives-container');
-            drivesContainer.innerHTML = '';
-            (p.metrics.drives || []).forEach(d => {
-                const card = document.createElement('div');
-                card.className = 'bg-slate-900/80 border border-darkborder rounded-xl p-4 space-y-2';
-                const usedPct = d.used_percent || 0;
-                const barColor = usedPct > 90 ? 'bg-red-500' : (usedPct > 75 ? 'bg-amber-500' : 'bg-emerald-500');
-                card.innerHTML = `
-                    <div class="flex items-center justify-between">
-                        <span class="font-bold text-sm text-white">${d.fs_name}</span>
-                        <span class="text-xs font-semibold ${usedPct > 90 ? 'text-red-400' : 'text-slate-300'}">${usedPct}%</span>
-                    </div>
-                    <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                        <div class="${barColor} h-full rounded-full" style="width: ${Math.min(usedPct, 100)}%"></div>
-                    </div>
-                    <div class="flex justify-between text-[11px] text-slate-400 pt-1">
-                        <span>Used: ${d.used_formatted || '?'}</span>
-                        <span>Total: ${d.total_formatted || '?'}</span>
-                    </div>
-                `;
-                drivesContainer.appendChild(card);
-            });
+            if (drivesContainer) {
+                drivesContainer.innerHTML = '';
+                (p.metrics.drives || []).forEach(d => {
+                    const card = document.createElement('div');
+                    card.className = 'bg-slate-900/80 border border-darkborder rounded-xl p-4 space-y-2';
+                    const usedPct = d.used_percent || 0;
+                    const barColor = usedPct > 90 ? 'bg-red-500' : (usedPct > 75 ? 'bg-amber-500' : 'bg-emerald-500');
+                    card.innerHTML = `
+                        <div class="flex items-center justify-between">
+                            <span class="font-bold text-sm text-white">${d.fs_name}</span>
+                            <span class="text-xs font-semibold ${usedPct > 90 ? 'text-red-400' : 'text-slate-300'}">${usedPct}%</span>
+                        </div>
+                        <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
+                            <div class="${barColor} h-full rounded-full" style="width: ${Math.min(usedPct, 100)}%"></div>
+                        </div>
+                        <div class="flex justify-between text-[11px] text-slate-400 pt-1">
+                            <span>Used: ${d.used_formatted || '?'}</span>
+                            <span>Total: ${d.total_formatted || '?'}</span>
+                        </div>
+                    `;
+                    drivesContainer.appendChild(card);
+                });
+            }
 
             // Services
             allServices = p.windows_services || [];
-            renderServicesTable(allServices);
+            if (document.getElementById('services-table-body')) {
+                renderServicesTable(allServices);
+            }
 
             // Hyper-V
-            const hvVms = p.hyperv.guest_vms || [];
-            document.getElementById('badge-vm-count').innerText = hvVms.length;
-            if (p.hyperv.is_hyperv_host && hvVms.length > 0) {
-                document.getElementById('hyperv-warning').classList.add('hidden');
-                document.getElementById('hyperv-content').classList.remove('hidden');
-                if(document.getElementById('vm-filter')) document.getElementById('vm-filter').value = '';
-                filterVmsGrid();
-            } else {
-                document.getElementById('hyperv-warning').classList.remove('hidden');
-                document.getElementById('hyperv-content').classList.add('hidden');
+            const hvVms = p.hyperv?.guest_vms || [];
+            const badgeVmCount = document.getElementById('badge-vm-count');
+            if (badgeVmCount) badgeVmCount.innerText = hvVms.length;
+            
+            const hvWarning = document.getElementById('hyperv-warning');
+            const hvContent = document.getElementById('hyperv-content');
+            if (hvWarning && hvContent) {
+                if (p.hyperv?.is_hyperv_host && hvVms.length > 0) {
+                    hvWarning.classList.add('hidden');
+                    hvContent.classList.remove('hidden');
+                    if(document.getElementById('vm-filter')) document.getElementById('vm-filter').value = '';
+                    filterVmsGrid();
+                } else {
+                    hvWarning.classList.remove('hidden');
+                    hvContent.classList.add('hidden');
+                }
             }
 
             // Inventory
             const invList = document.getElementById('inv-hardware-list');
+            if (invList) {
             let cpuHtml = (p.inventory.cpus && p.inventory.cpus.length > 0) ? `<div class="flex flex-col border-b border-darkborder/40 pb-1.5"><span class="text-slate-400">CPUs:</span><span class="font-semibold text-slate-200 text-[11px]">${p.inventory.cpus.join('<br>')}</span></div>` : '';
             let ramHtml = (p.inventory.ram_gb !== null && p.inventory.ram_gb !== undefined) ? `<div class="flex justify-between border-b border-darkborder/40 pb-1.5"><span class="text-slate-400">RAM:</span><span class="font-semibold text-slate-200">${p.inventory.ram_gb} GB</span></div>` : '';
             
@@ -1043,6 +1122,7 @@
                     Note: To detect connected switches, CDP/LLDP packets must be analyzed (e.g. via Wireshark). Native WMI does not provide switch information.
                 </div>
             `;
+            }
 
             const groupsContainer = document.getElementById('inv-groups-list');
             if (groupsContainer) {
