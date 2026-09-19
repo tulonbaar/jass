@@ -35,7 +35,7 @@ _PS_POLYFILL = (
 
 _PS_PREAMBLE = _PS_POLYFILL + "$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='SilentlyContinue';"
 
-_PARSER_PREAMBLE = '''
+_PARSER_PREAMBLE = r'''
 import json
 def _extract_json_fragment(text: str):
     if not text:
@@ -51,7 +51,13 @@ def _extract_json_fragment(text: str):
     return text[start : end + 1]
 
 def _safe_json_loads(text: str):
-    frag = _extract_json_fragment(text)
+    # PowerShell console host sometimes hard-wraps stdout at 80 or 120 columns.
+    # Since all our probes use ConvertTo-Json -Compress, intentional newlines
+    # in data (e.g. event logs) are escaped as literal '\n'. Thus, any actual
+    # \r or \n characters in the raw output are purely from console wrapping 
+    # and can be safely stripped to reconstruct the valid JSON string.
+    text_clean = text.replace('\r', '').replace('\n', '')
+    frag = _extract_json_fragment(text_clean)
     if not frag:
         return None
     try:
@@ -226,7 +232,7 @@ PROBES = [
             _PS_PREAMBLE + " "
             "$c = Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue; "
             "if ($c) { $res = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue; if ($res) { $res = @($res | Select-Object LocalAddress,LocalPort,OwningProcess,@{N='Process';E={(Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName}}); ConvertTo-Json -InputObject $res -Compress; exit 0 } }; "
-            "$ports = netstat -ano -p tcp | Where-Object { $_ -match '(?i)LISTEN' }; "
+            "$ports = netstat -ano -p tcp | Where-Object { $_ -match '(?i)LISTEN|NAS.UCH' }; "
             "$out = @(); "
             "foreach ($p in $ports) { "
             "  $parts = [regex]::Split($p.ToString().Trim(), '\\s+'); "
