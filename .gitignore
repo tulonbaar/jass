@@ -13,6 +13,7 @@ build/
 ## Application-specific files and directories
 analysis_reports/
 jass.db
+prober.exe
 
 ## VS Code
 .vscode/
