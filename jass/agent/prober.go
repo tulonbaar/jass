@@ -60,16 +60,10 @@ func getRandomBytes(b []byte) error {
 	return nil
 }
 
-// initLogging sets up logging to both stdout and prober-log.log in the executable's directory.
 func initLogging() (*os.File, string) {
-	exePath, err := os.Executable()
-	var exeDir string
-	if err == nil {
-		exeDir = filepath.Dir(exePath)
-	} else {
-		exeDir = "."
-	}
-	logFilePath := filepath.Join(exeDir, "prober-log.log")
+	logDir := `C:\ProgramData\JASS`
+	os.MkdirAll(logDir, 0755)
+	logFilePath := filepath.Join(logDir, "prober.log")
 	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	if err != nil {
 		log.Printf("Warning: failed to open log file %s: %v\n", logFilePath, err)
@@ -177,7 +171,9 @@ func executeHandler(w http.ResponseWriter, r *http.Request) {
 	// universally across PS 2.0 through PS 7+.
 	rndBytes := make([]byte, 8)
 	_ = getRandomBytes(rndBytes)
-	tempFile := filepath.Join(os.TempDir(), "jass_"+hex.EncodeToString(rndBytes)+".ps1")
+	tempDir := `C:\ProgramData\JASS`
+	os.MkdirAll(tempDir, 0755)
+	tempFile := filepath.Join(tempDir, "jass_"+hex.EncodeToString(rndBytes)+".ps1")
 
 	if err := os.WriteFile(tempFile, []byte(req.Script), 0600); err != nil {
 		log.Printf("[EXEC] Failed to write temp script file %s: %v", tempFile, err)
