@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/aes"
 	"crypto/cipher"
+	"encoding/hex"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -172,6 +173,27 @@ func executeHandler(w http.ResponseWriter, r *http.Request) {
 	// Execute PowerShell via Stdin with -ExecutionPolicy Bypass to avoid argument length limits, quoting issues, or policy restrictions
 	cmd := exec.CommandContext(ctx, "powershell.exe", "-NonInteractive", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "-")
 	cmd.Stdin = strings.NewReader(req.Script)
+	// Write script to a temp .ps1 file and execute via -File.
+	// This is required for PowerShell 2.0 compatibility: the Stdin approach
+	// (-Command -) silently breaks on PS 2.0 when scripts combine function
+	// definitions with foreach/for loops. Temp-file execution works
+	// universally across PS 2.0 through PS 7+.
+	rndBytes := make([]byte, 8)
+	_ = getRandomBytes(rndBytes)
+	tempFile := filepath.Join(os.TempDir(), "jass_"+hex.EncodeToString(rndBytes)+".ps1")
+
+	if err := os.WriteFile(tempFile, []byte(req.Script), 0600); err != nil {
+		log.Printf("[EXEC] Failed to write temp script file %s: %v", tempFile, err)
+		http.Error(w, "Failed to write temp script", http.StatusInternalServerError)
+		return
+	}
+	defer func() {
+		if rmErr := os.Remove(tempFile); rmErr != nil {
+			log.Printf("[EXEC] Warning: failed to remove temp file %s: %v", tempFile, rmErr)
+		}
+	}()
+
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-NonInteractive", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", tempFile)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

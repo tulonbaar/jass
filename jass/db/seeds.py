@@ -5,6 +5,43 @@ from datetime import datetime
 
 # Common PowerShell preamble
 _PS_PREAMBLE = "$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='SilentlyContinue';"
+# Common PowerShell preamble with ConvertTo-Json polyfill for PowerShell 2.0
+# The polyfill is conditional: only activates when ConvertTo-Json is not available (PS 2.0).
+# Uses a recursive pure-PowerShell JSON encoder to avoid JavaScriptSerializer's
+# circular reference bugs with PSObject/PSCustomObject.
+_PS_POLYFILL = (
+    "if (-not (Get-Command ConvertTo-Json -ErrorAction SilentlyContinue)) { "
+    "function ConvertTo-Json { "
+    "param([Parameter(ValueFromPipeline=$true)]$InputObject, [int]$Depth=4, [switch]$Compress) "
+    "begin { "
+    "function _enc($obj, $d) { "
+    "if ($d -le 0 -or $obj -eq $null) { return 'null' } "
+    "if ($obj -is [bool]) { return $obj.ToString().ToLower() } "
+    "if ($obj -is [byte] -or $obj -is [int] -or $obj -is [long] -or $obj -is [double] -or $obj -is [decimal]) { return $obj.ToString() } "
+    "if ($obj -is [string]) { "
+    "$esc = $obj.Replace('\\','\\\\').Replace('\"','\\\"').Replace(\"`r\",'\\r').Replace(\"`n\",'\\n').Replace(\"`t\",'\\t'); "
+    "return '\"' + $esc + '\"' } "
+    "if ($obj -is [System.Collections.IDictionary]) { "
+    "$p = @(); foreach ($k in $obj.Keys) { $p += '\"' + $k + '\":' + (_enc $obj[$k] ($d-1)) }; "
+    "return '{' + ($p -join ',') + '}' } "
+    "if ($obj -is [System.Collections.IEnumerable]) { "
+    "$p = @(); foreach ($i in $obj) { $p += _enc $i ($d-1) }; "
+    "return '[' + ($p -join ',') + ']' } "
+    "$p = @(); "
+    "foreach ($pr in $obj.PSObject.Properties) { "
+    "$p += '\"' + $pr.Name + '\":' + (_enc $pr.Value ($d-1)) }; "
+    "return '{' + ($p -join ',') + '}' "
+    "} "
+    "$buf = New-Object System.Collections.ArrayList } "
+    "process { if ($InputObject -ne $null) { [void]$buf.Add($InputObject) } else { [void]$buf.Add($_) } } "
+    "end { "
+    "if ($buf.Count -eq 0) { Write-Output '[]' } "
+    "elseif ($buf.Count -eq 1 -and -not ($buf[0] -is [System.Collections.IEnumerable] -and -not ($buf[0] -is [string]))) { Write-Output (_enc $buf[0] $Depth) } "
+    "else { Write-Output (_enc $buf $Depth) } "
+    "} } }; "
+)
+
+_PS_PREAMBLE = _PS_POLYFILL + "$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='SilentlyContinue';"
 
 _PARSER_PREAMBLE = '''
 import json
@@ -198,6 +235,7 @@ PROBES = [
             "$c = Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue; "
             "if ($c) { $res = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue; if ($res) { $res | Select-Object LocalAddress,LocalPort,OwningProcess,@{N='Process';E={(Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName}} | ConvertTo-Json -Compress; exit 0 } }; "
             "$ports = netstat -ano -p tcp | Where-Object { $_ -match '(?i)LISTEN|NAS' }; "
+            "$ports = netstat -ano -p tcp | Where-Object { $_ -match '(?i)LISTEN' }; "
             "$out = @(); "
             "foreach ($p in $ports) { "
             "  $line = $p.ToString().Trim(); "
@@ -208,6 +246,17 @@ PROBES = [
             "    $addr = $m.Groups[1].Value; "
             "    $proc = ''; try { $proc = (Get-Process -Id $targetPid -ErrorAction SilentlyContinue).ProcessName } catch {}; "
             "    $out += [PSCustomObject]@{LocalAddress=$addr;LocalPort=$port;OwningProcess=$targetPid;Process=$proc} "
+            "  $parts = [regex]::Split($p.ToString().Trim(), '\\s+'); "
+            "  if ($parts.Count -ge 5 -and $parts[0] -eq 'TCP') { "
+            "    $local = $parts[1]; "
+            "    $colIdx = $local.LastIndexOf(':'); "
+            "    if ($colIdx -gt 0) { "
+            "      $addr = $local.Substring(0, $colIdx); "
+            "      $port = [int]$local.Substring($colIdx + 1); "
+            "      $targetPid = [int]$parts[4]; "
+            "      $proc = ''; try { $proc = (Get-Process -Id $targetPid -ErrorAction SilentlyContinue).ProcessName } catch {}; "
+            "      $out += [PSCustomObject]@{LocalAddress=$addr;LocalPort=$port;OwningProcess=$targetPid;Process=$proc} "
+            "    } "
             "  } "
             "}; "
             "if ($out.Count -eq 0) { '[]' } else { $out | ConvertTo-Json -Compress }; exit 0"
@@ -223,6 +272,7 @@ PROBES = [
             "$cs = &$getCim Win32_ComputerSystem; "
             "$cpus = @(&$getCim Win32_Processor | Select-Object -ExpandProperty Name); "
             "$ram = if ($cs -and $cs.TotalPhysicalMemory) { [math]::Round($cs.TotalPhysicalMemory / 1GB, 2) } else { 0 }; "
+            "$ram = 0; if ($cs -and $cs.TotalPhysicalMemory) { $ram = [math]::Round($cs.TotalPhysicalMemory / 1GB, 2) }; "
             "$nics = @(&$getCim Win32_NetworkAdapter | Where-Object { $_.NetConnectionStatus -eq 2 } | Select-Object Name, MACAddress, Speed); "
             "$disks = @(&$getCim Win32_DiskDrive | Select-Object Model, Size, InterfaceType); "
             "[PSCustomObject]@{SerialNumber=$bios.SerialNumber; Manufacturer=$cs.Manufacturer; Model=$cs.Model; CPUs=$cpus; RAM_GB=$ram; NICs=$nics; Disks=$disks; MacAddresses=@($nics | ForEach-Object { $_.MACAddress })} | ConvertTo-Json -Depth 4 -Compress; exit 0"
@@ -246,6 +296,21 @@ PROBES = [
             _PS_PREAMBLE + " "
             "$events = @(Get-WinEvent -FilterHashtable @{LogName='System','Application';Level=1,2;StartTime=(Get-Date).AddHours(-24)} -MaxEvents 50 -ErrorAction SilentlyContinue | "
             "Select-Object @{N='TimeCreated';E={$_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')}},LogName,Id,LevelDisplayName,ProviderName,@{N='Message';E={ if ($_.Message) { $m = $_.Message; foreach($q in 8222,8221,8220,8216,8217,34){ $m = $m.Replace([char]$q, [char]39) }; $m } else { '' } }}); "
+            "$events = @(); "
+            "$winEvt = Get-Command Get-WinEvent -ErrorAction SilentlyContinue; "
+            "if ($winEvt) { "
+            "  $events = @(Get-WinEvent -FilterHashtable @{LogName='System','Application';Level=1,2;StartTime=(Get-Date).AddHours(-24)} -MaxEvents 50 -ErrorAction SilentlyContinue | "
+            "  Select-Object @{N='TimeCreated';E={$_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')}},LogName,Id,LevelDisplayName,ProviderName,@{N='Message';E={ if ($_.Message) { $m = $_.Message; foreach($q in 8222,8221,8220,8216,8217,34){ $m = $m.Replace([char]$q, [char]39) }; $m } else { '' } }}) "
+            "} else { "
+            "  $cutoff = (Get-Date).AddHours(-24); "
+            "  foreach ($logName in 'System','Application') { "
+            "    $raw = @(Get-EventLog -LogName $logName -EntryType Error,Warning -After $cutoff -Newest 25 -ErrorAction SilentlyContinue); "
+            "    foreach ($e in $raw) { "
+            "      $msg = ''; if ($e.Message) { $msg = $e.Message }; "
+            "      $events += [PSCustomObject]@{TimeCreated=$e.TimeGenerated.ToString('yyyy-MM-dd HH:mm:ss');LogName=$logName;Id=$e.EventID;LevelDisplayName=$e.EntryType.ToString();ProviderName=$e.Source;Message=$msg} "
+            "    } "
+            "  } "
+            "}; "
             "if ($events.Count -eq 0) { '[]' } else { $events | ConvertTo-Json -Compress -Depth 3 }; exit 0"
         )
     },
@@ -259,6 +324,8 @@ PROBES = [
             "Get-PSDrive -PSProvider FileSystem | ForEach-Object { $d = $_.Root; "
             "Get-ChildItem -Path $d -Directory -ErrorAction SilentlyContinue | ForEach-Object { "
             "$subs = ''; try { $subs = ([System.IO.Directory]::EnumerateDirectories($_.FullName) | ForEach-Object { [System.IO.Path]::GetFileName($_) }) -join ', ' } catch {}; $out += [PSCustomObject]@{Drive=$d;Folder=$_.Name;Standard=($known -contains $_.Name);Subfolders=$subs} } }; "
+            "Get-ChildItem -Path $d -ErrorAction SilentlyContinue | Where-Object { $_.PSIsContainer } | ForEach-Object { "
+            "$subs = ''; try { $subs = ([System.IO.Directory]::GetDirectories($_.FullName) | ForEach-Object { [System.IO.Path]::GetFileName($_) }) -join ', ' } catch {}; $out += [PSCustomObject]@{Drive=$d;Folder=$_.Name;Standard=($known -contains $_.Name);Subfolders=$subs} } }; "
             "if ($out.Count -eq 0) { '[]' } else { $out | ConvertTo-Json -Compress }; exit 0"
         )
     },
@@ -272,6 +339,8 @@ PROBES = [
             "$qwinsta = ''; try { $qwinsta = (qwinsta 2>$null | Out-String).Trim() } catch {}; "
             "$enabled = if ($ts -and $ts.fDenyTSConnections -ne $null) { $ts.fDenyTSConnections -eq 0 } else { $false }; "
             "$port = if ($rdp -and $rdp.PortNumber -ne $null) { [int]$rdp.PortNumber } else { 3389 }; "
+            "$enabled = $false; if ($ts -and $ts.fDenyTSConnections -ne $null) { $enabled = ($ts.fDenyTSConnections -eq 0) }; "
+            "$port = 3389; if ($rdp -and $rdp.PortNumber -ne $null) { $port = [int]$rdp.PortNumber }; "
             "[PSCustomObject]@{TSEnabled=$enabled;Port=$port;Sessions=$qwinsta} | ConvertTo-Json -Compress; exit 0"
         )
     },
@@ -284,6 +353,21 @@ PROBES = [
             "$matched = @(); "
             "if ($events) { foreach ($e in $events) { if ($e.Properties.Count -gt 8 -and ($e.Properties[8].Value -in 2,10)) { "
             "$user = $e.Properties[5].Value; if ($user -notmatch 'UMFD|DWM') { $matched += [PSCustomObject]@{User=$user} } } } }; "
+            "$winEvt = Get-Command Get-WinEvent -ErrorAction SilentlyContinue; "
+            "if ($winEvt) { "
+            "  $events = Get-WinEvent -FilterHashtable @{LogName='Security';ID=4624;StartTime=(Get-Date).AddDays(-7)} -ErrorAction SilentlyContinue; "
+            "  if ($events) { foreach ($e in $events) { $lt = $e.Properties[8].Value; if ($e.Properties.Count -gt 8 -and (2,10 -contains $lt)) { "
+            "  $user = $e.Properties[5].Value; if ($user -notmatch 'UMFD|DWM') { $matched += [PSCustomObject]@{User=$user} } } } } "
+            "} else { "
+            "  $events = Get-EventLog -LogName Security -InstanceId 4624 -After (Get-Date).AddDays(-7) -Newest 200 -ErrorAction SilentlyContinue; "
+            "  if ($events) { foreach ($e in $events) { "
+            "    $msg = $e.Message; $user = ''; "
+            "    if ($msg -match 'Logon Type:\\s+(2|10)') { "
+            "      if ($msg -match 'Account Name:\\s+(\\S+)') { $user = $matches[1] }; "
+            "      if ($user -and $user -notmatch 'UMFD|DWM|\\$') { $matched += [PSCustomObject]@{User=$user} } "
+            "    } "
+            "  } } "
+            "}; "
             "if ($matched.Count -gt 0) { $matched | Group-Object User | Select-Object Name, Count | ConvertTo-Json -Compress } else { '[]' }; exit 0"
         )
     }
