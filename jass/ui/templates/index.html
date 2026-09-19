@@ -964,11 +964,17 @@ Waiting for configuration or start...
                     });
 
                     if (!res.ok) {
-                        const err = await res.json();
-                        logEl.innerText += `[JASS] Error preparing manual start: ${err.detail || 'Unknown error'}\n`;
+                        let errorMsg = 'Unknown error';
+                        try {
+                            const err = await res.json();
+                            errorMsg = err.detail || errorMsg;
+                        } catch (_) {
+                            errorMsg = (await res.text()) || res.statusText || 'Server Error';
+                        }
+                        logEl.innerText += `[JASS] Error preparing manual start: ${errorMsg}\n`;
                         badgeEl.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-red-500/20 text-red-400 border border-red-500/30';
                         badgeEl.innerText = 'Error';
-                        showToast(`Manual start error: ${err.detail || 'Unknown error'}`, true);
+                        showToast(`Manual start error: ${errorMsg}`, true);
                         return;
                     }
 
@@ -1018,11 +1024,17 @@ Waiting for configuration or start...
                     });
 
                     if (!res.ok) {
-                        const err = await res.json();
-                        logEl.innerText += `\nDeployment failed:\n${err.detail || 'Unknown error'}\n`;
+                        let errorMsg = 'Unknown error';
+                        try {
+                            const err = await res.json();
+                            errorMsg = err.detail || errorMsg;
+                        } catch (_) {
+                            errorMsg = (await res.text()) || res.statusText || 'Server Error';
+                        }
+                        logEl.innerText += `\nDeployment failed:\n${errorMsg}\n`;
                         badgeEl.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-red-500/20 text-red-400 border border-red-500/30';
                         badgeEl.innerText = 'Deployment Failed';
-                        showToast(`Prober deploy error: ${err.detail || 'Unknown error'}`, true);
+                        showToast(`Prober deploy error: ${errorMsg}`, true);
                         return;
                     }
 

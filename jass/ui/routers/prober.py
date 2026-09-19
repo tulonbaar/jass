@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 import secrets
 import time
 import requests
@@ -28,127 +29,142 @@ class ManualStartRequest(BaseModel):
 
 @router.post("/manual-start")
 async def manual_start_prober(req: ManualStartRequest, request: Request):
-    analyzer = main_app.get_or_create_analyzer()
-    if not analyzer:
-        raise HTTPException(status_code=500, detail="Zabbix analyzer not initialized")
+    try:
+        analyzer = main_app.get_or_create_analyzer()
+        if not analyzer:
+            raise HTTPException(status_code=500, detail="Zabbix analyzer not initialized")
 
-    hosts = analyzer.list_hosts(search=req.host_identifier)
-    if not hosts:
-        raise HTTPException(status_code=404, detail="Host not found in Zabbix")
-    
-    host_info = hosts[0]
-    interfaces = analyzer.client.call("hostinterface.get", {"output": ["ip"], "hostids": host_info["hostid"]})
-    if not interfaces:
-        raise HTTPException(status_code=400, detail="Host has no IP interfaces")
-    
-    target_ip = interfaces[0]["ip"]
-    psk = req.psk.strip() if req.psk and req.psk.strip() else secrets.token_hex(16)
-    
-    jass_url = os.environ.get("JASS_BASE_URL", "").rstrip("/") or str(request.base_url).rstrip("/")
-    
-    # Save config in DB
-    from jass.core.prober_client import ProberClient
-    client = ProberClient(host_id=host_info["hostid"], host_ip=target_ip)
-    client.update_psk(psk, req.ttl, req.port)
-    client.close()
-    
-    command = f".\\prober.exe --port {req.port} --ttl {req.ttl} --psk \"{psk}\""
-    download_command = f"(New-Object System.Net.WebClient).DownloadFile('{jass_url}/static/prober.exe', 'prober.exe')"
-    oneliner = f"(New-Object System.Net.WebClient).DownloadFile('{jass_url}/static/prober.exe', 'prober.exe'); .\\prober.exe --port {req.port} --ttl {req.ttl} --psk '{psk}'"
-    
-    return {
-        "status": "ready",
-        "ip": target_ip,
-        "port": req.port,
-        "ttl": req.ttl,
-        "psk": psk,
-        "command": command,
-        "download_command": download_command,
-        "oneliner": oneliner
-    }
+        hosts = analyzer.list_hosts(search=req.host_identifier)
+        if not hosts:
+            raise HTTPException(status_code=404, detail="Host not found in Zabbix")
+        
+        host_info = hosts[0]
+        interfaces = analyzer.client.call("hostinterface.get", {"output": ["ip"], "hostids": host_info["hostid"]})
+        if not interfaces:
+            raise HTTPException(status_code=400, detail="Host has no IP interfaces")
+        
+        target_ip = interfaces[0]["ip"]
+        psk = req.psk.strip() if req.psk and req.psk.strip() else secrets.token_hex(16)
+        
+        jass_url = os.environ.get("JASS_BASE_URL", "").rstrip("/") or str(request.base_url).rstrip("/")
+        
+        # Save config in DB
+        from jass.core.prober_client import ProberClient
+        client = ProberClient(host_id=host_info["hostid"], host_ip=target_ip)
+        try:
+            client.update_psk(psk, req.ttl, req.port)
+        finally:
+            client.close()
+        
+        command = f".\\prober.exe --port {req.port} --ttl {req.ttl} --psk \"{psk}\""
+        download_command = f"(New-Object System.Net.WebClient).DownloadFile('{jass_url}/static/prober.exe', 'prober.exe')"
+        oneliner = f"(New-Object System.Net.WebClient).DownloadFile('{jass_url}/static/prober.exe', 'prober.exe'); .\\prober.exe --port {req.port} --ttl {req.ttl} --psk '{psk}'"
+        
+        return {
+            "status": "ready",
+            "ip": target_ip,
+            "port": req.port,
+            "ttl": req.ttl,
+            "psk": psk,
+            "command": command,
+            "download_command": download_command,
+            "oneliner": oneliner
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Manual start prober error:")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 @router.post("/deploy")
 async def deploy_prober(req: DeployRequest, request: Request, background_tasks: BackgroundTasks):
-    analyzer = main_app.get_or_create_analyzer()
-    if not analyzer:
-        raise HTTPException(status_code=500, detail="Zabbix analyzer not initialized")
-
-    hosts = analyzer.client.call("host.get", {
-        "output": ["hostid", "host", "name"],
-        "filter": {"host": [req.host_identifier]} if not req.host_identifier.isdigit() else {},
-        "hostids": [req.host_identifier] if req.host_identifier.isdigit() else None
-    })
-    if not hosts:
-        raise HTTPException(status_code=404, detail="Host not found in Zabbix")
-    
-    host_info = hosts[0]
-    # Pick agent IP
-    interfaces = analyzer.client.call("hostinterface.get", {"output": ["ip"], "hostids": host_info["hostid"]})
-    if not interfaces:
-        raise HTTPException(status_code=400, detail="Host has no IP interfaces")
-    
-    target_ip = interfaces[0]["ip"]
-    
-    # Generate or use provided PSK
-    psk = req.psk.strip() if req.psk and req.psk.strip() else secrets.token_hex(16)
-    
-    jass_url = os.environ.get("JASS_BASE_URL", "").rstrip("/") or str(request.base_url).rstrip("/")
-    # Using WebClient for universal compatibility across PowerShell 2.0 through 7+
-    dropper_ps = f"""
-$ErrorActionPreference = 'Stop'
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
-Get-Process 'prober*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
-Start-Sleep -Seconds 1
-(New-Object System.Net.WebClient).DownloadFile('{jass_url}/static/prober.exe', 'C:\\Windows\\Temp\\prober.exe')
-Start-Process -WindowStyle Hidden -FilePath 'C:\\Windows\\Temp\\prober.exe' -ArgumentList '--port {req.port} --ttl {req.ttl} --psk {psk}'
-"""
-    
-    logger.info(f"Deploying prober to {target_ip} from {jass_url}")
-    
-    script_name = "JASS Prober Dropper"
-    available_scripts = analyzer.client.call("script.get", {"hostids": [host_info["hostid"]]})
-    target_script = next((sc for sc in available_scripts if sc.get("name") == script_name), None)
-            
-    if not target_script:
-        logger.info(f"Creating Zabbix script '{script_name}'")
-        try:
-            created = analyzer.client.call(
-                "script.create",
-                {
-                    "name": script_name,
-                    "command": dropper_ps,
-                    "type": 0,  # 0 = Script
-                    "scope": 2,  # 2 = Manual host action
-                    "execute_on": 0,  # 0 = Zabbix agent
-                    "description": "Deploys ephemeral JASS Prober agent",
-                },
-            )
-            script_id = created["scriptids"][0]
-        except Exception as e:
-            logger.error(f"Failed to create dropper script: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to create dropper script: {e}")
-    else:
-        script_id = target_script["scriptid"]
-        # Always update script to ensure correct payload and jass_url
-        analyzer.client.call("script.update", {"scriptid": script_id, "command": dropper_ps})
-
-    logger.info(f"Executing dropper on {target_ip} (scriptid: {script_id})")
     try:
-        res = analyzer.client.call("script.execute", {"scriptid": script_id, "hostid": host_info["hostid"]})
-        dropper_output = res.get("value", "") if isinstance(res, dict) else str(res)
+        analyzer = main_app.get_or_create_analyzer()
+        if not analyzer:
+            raise HTTPException(status_code=500, detail="Zabbix analyzer not initialized")
+
+        hosts = analyzer.client.call("host.get", {
+            "output": ["hostid", "host", "name"],
+            "filter": {"host": [req.host_identifier]} if not req.host_identifier.isdigit() else {},
+            "hostids": [req.host_identifier] if req.host_identifier.isdigit() else None
+        })
+        if not hosts:
+            raise HTTPException(status_code=404, detail="Host not found in Zabbix")
+        
+        host_info = hosts[0]
+        # Pick agent IP
+        interfaces = analyzer.client.call("hostinterface.get", {"output": ["ip"], "hostids": host_info["hostid"]})
+        if not interfaces:
+            raise HTTPException(status_code=400, detail="Host has no IP interfaces")
+        
+        target_ip = interfaces[0]["ip"]
+        
+        # Generate or use provided PSK
+        psk = req.psk.strip() if req.psk and req.psk.strip() else secrets.token_hex(16)
+        
+        jass_url = os.environ.get("JASS_BASE_URL", "").rstrip("/") or str(request.base_url).rstrip("/")
+        # Using powershell one-liner with WebClient and wmic to break away from Zabbix Agent's job object
+        dropper_cmd = (
+            'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "'
+            'Get-Process prober* -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; '
+            'Start-Sleep -Seconds 1; '
+            f'(New-Object System.Net.WebClient).DownloadFile(\'{jass_url}/static/prober.exe\', \'C:\\\\Windows\\\\Temp\\\\prober.exe\'); '
+            f'wmic process call create \'C:\\\\Windows\\\\Temp\\\\prober.exe --port {req.port} --ttl {req.ttl} --psk {psk}\'"'
+        )
+        
+        logger.info(f"Deploying prober to {target_ip} from {jass_url}")
+        
+        script_name = "JASS Prober Dropper"
+        available_scripts = analyzer.client.call("script.get", {"hostids": [host_info["hostid"]]})
+        target_script = next((sc for sc in available_scripts if sc.get("name") == script_name), None)
+                
+        if not target_script:
+            logger.info(f"Creating Zabbix script '{script_name}'")
+            try:
+                created = analyzer.client.call(
+                    "script.create",
+                    {
+                        "name": script_name,
+                        "command": dropper_cmd,
+                        "type": 0,  # 0 = Script
+                        "scope": 2,  # 2 = Manual host action
+                        "execute_on": 0,  # 0 = Zabbix agent
+                        "description": "Deploys ephemeral JASS Prober agent",
+                    },
+                )
+                script_id = created["scriptids"][0]
+            except Exception as e:
+                logger.error(f"Failed to create dropper script: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to create dropper script: {e}")
+        else:
+            script_id = target_script["scriptid"]
+            # Always update script to ensure correct payload and jass_url
+            analyzer.client.call("script.update", {"scriptid": script_id, "command": dropper_cmd})
+
+        logger.info(f"Executing dropper on {target_ip} (scriptid: {script_id})")
+        try:
+            res = analyzer.client.call("script.execute", {"scriptid": script_id, "hostid": host_info["hostid"]})
+            dropper_output = res.get("value", "") if isinstance(res, dict) else str(res)
+        except Exception as e:
+            logger.error(f"Failed to execute dropper: {e}")
+            raise HTTPException(status_code=500, detail=f"Failed to execute dropper: {e}")
+        
+        # Save PSK and TTL in DB
+        from jass.core.prober_client import ProberClient
+        client = ProberClient(host_id=host_info["hostid"], host_ip=target_ip)
+        try:
+            client.update_psk(psk, req.ttl, req.port)
+        finally:
+            client.close()
+        
+        # We no longer run script automatically here, we just deploy it. Wait for it to become alive via separate ping loop.
+        return {"status": "deployed", "ip": target_ip, "port": req.port, "ttl": req.ttl, "dropper_output": dropper_output}
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Failed to execute dropper: {e}")
-        raise HTTPException(status_code=500, detail=f"Failed to execute dropper: {e}")
-    
-    # Save PSK and TTL in DB
-    from jass.core.prober_client import ProberClient
-    client = ProberClient(host_id=host_info["hostid"], host_ip=target_ip)
-    client.update_psk(psk, req.ttl, req.port)
-    client.close()
-    
-    # We no longer run script automatically here, we just deploy it. Wait for it to become alive via separate ping loop.
-    return {"status": "deployed", "ip": target_ip, "port": req.port, "ttl": req.ttl, "dropper_output": dropper_output}
+        logger.exception("Deploy prober error:")
+        raise HTTPException(status_code=500, detail=str(e))
 
 from jass.core.prober_client import ProberClient
 from jass.db.models import ProberTask, HostProperty, HostPropertyValue
