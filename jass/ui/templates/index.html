@@ -236,6 +236,9 @@
                     <button onclick="switchTab('tab-remote')" id="btn-tab-remote" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition">
                         <i class="fa-solid fa-terminal mr-2 w-4 text-center"></i>Tasks
                     </button>
+                    <button onclick="switchTab('tab-prober')" id="btn-tab-prober" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition font-semibold text-emerald-400">
+                        <i class="fa-solid fa-satellite-dish mr-2 w-4 text-center"></i>Prober
+                    </button>
                     <button onclick="switchTab('tab-llm')" id="btn-tab-llm" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition font-bold text-brand-400">
                         <i class="fa-solid fa-code mr-2 w-4 text-center"></i>JSON Info
                     </button>
@@ -446,8 +449,8 @@
                                 <button onclick="triggerRemoteProbe()" class="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-xs font-semibold">
                                     Run Task Now
                                 </button>
-                                <button onclick="triggerProberDeploy()" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5">
-                                    <i class="fa-solid fa-play"></i> Run Prober
+                                <button onclick="switchTab('tab-prober')" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5">
+                                    <i class="fa-solid fa-satellite-dish"></i> Prober Setup & Status
                                 </button>
                                 <button onclick="runAllProbes()" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-semibold whitespace-nowrap">
                                     Run All Tasks
@@ -461,6 +464,129 @@
                             <div>
                                 <h4 class="text-xs font-semibold text-slate-400 mb-2 uppercase tracking-wide">Parsed / Structured Output</h4>
                                 <div class="bg-slate-950 font-mono text-xs text-sky-300 p-4 rounded-xl border border-darkborder overflow-x-auto max-h-96" id="remote-probe-parsed"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab: Prober Configuration, Status & Logs -->
+                <div id="tab-prober" class="tab-pane hidden space-y-5">
+                    <div class="bg-darkcard border border-darkborder rounded-2xl p-6 space-y-6">
+                        <!-- Header -->
+                        <div class="flex flex-col sm:flex-row sm:items-center justify-between border-b border-darkborder/60 pb-4 gap-3">
+                            <div>
+                                <h3 class="text-base font-bold text-white flex items-center space-x-2">
+                                    <i class="fa-solid fa-satellite-dish text-emerald-400"></i>
+                                    <span>Prober Agent Setup & Live Status</span>
+                                </h3>
+                                <p class="text-xs text-slate-400 mt-0.5">Configure, launch, and monitor the ephemeral diagnostic agent on this host.</p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <button onclick="checkProberStatusManual()" class="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 border border-darkborder rounded-lg text-slate-200 flex items-center gap-1.5 transition">
+                                    <i class="fa-solid fa-rotate text-slate-400"></i> Check Ping
+                                </button>
+                                <span id="prober-alive-badge" class="px-3 py-1 text-xs font-bold rounded-lg bg-slate-800 text-slate-400 border border-darkborder">
+                                    Unknown Status
+                                </span>
+                            </div>
+                        </div>
+
+                        <!-- Prober Settings Form -->
+                        <div class="bg-slate-900/60 border border-darkborder rounded-xl p-5 space-y-4">
+                            <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
+                                <i class="fa-solid fa-sliders"></i> Prober Configuration
+                            </h4>
+
+                            <div>
+                                <label class="block text-slate-300 font-semibold mb-2 text-xs">Launch Mode:</label>
+                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                    <label class="flex flex-col p-3 rounded-xl border border-darkborder bg-slate-900 cursor-pointer hover:border-brand-500 transition has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500/10">
+                                        <div class="flex items-center space-x-2">
+                                            <input type="radio" name="prober-tab-mode" value="manual" checked class="text-brand-500 focus:ring-0">
+                                            <span class="font-bold text-slate-100 text-xs">Manual Start (Recommended)</span>
+                                        </div>
+                                        <span class="text-[11px] text-slate-400 mt-1">Configure parameters here, then run the command directly on the destination server.</span>
+                                    </label>
+                                    <label class="flex flex-col p-3 rounded-xl border border-darkborder bg-slate-900 cursor-pointer hover:border-brand-500 transition has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500/10">
+                                        <div class="flex items-center space-x-2">
+                                            <input type="radio" name="prober-tab-mode" value="auto" class="text-brand-500 focus:ring-0">
+                                            <span class="font-bold text-slate-100 text-xs">Automatic (Zabbix Dropper)</span>
+                                        </div>
+                                        <span class="text-[11px] text-slate-400 mt-1">Deploy and execute dropper script via Zabbix agent on target machine.</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-slate-300 font-medium mb-1 text-xs">Listening Port:</label>
+                                    <input type="number" id="prober-tab-port" value="8443" class="w-full bg-slate-950 border border-darkborder rounded-lg px-3 py-2 text-slate-200 text-xs font-mono focus:outline-none focus:border-brand-500">
+                                </div>
+                                <div>
+                                    <label class="block text-slate-300 font-medium mb-1 text-xs">TTL (seconds):</label>
+                                    <input type="number" id="prober-tab-ttl" value="3600" class="w-full bg-slate-950 border border-darkborder rounded-lg px-3 py-2 text-slate-200 text-xs font-mono focus:outline-none focus:border-brand-500">
+                                </div>
+                            </div>
+
+                            <div>
+                                <div class="flex items-center justify-between mb-1">
+                                    <label class="block text-slate-300 font-medium text-xs">Pre-Shared Key (PSK):</label>
+                                    <button type="button" onclick="generateProberTabPsk()" class="text-[11px] text-brand-400 hover:underline">
+                                        <i class="fa-solid fa-arrows-rotate mr-1"></i>Generate new key
+                                    </button>
+                                </div>
+                                <input type="text" id="prober-tab-psk" placeholder="Leave empty for auto-generated key" class="w-full bg-slate-950 border border-darkborder rounded-lg px-3 py-2 text-slate-200 font-mono text-xs focus:outline-none focus:border-brand-500">
+                                <span class="text-[10px] text-slate-500 mt-1 block">Used for AES-GCM encrypted communication between JASS and prober.exe.</span>
+                            </div>
+
+                            <div class="flex items-center justify-between pt-2 border-t border-darkborder/40">
+                                <a href="/static/prober.exe" download="prober.exe" class="text-xs text-brand-400 hover:underline flex items-center gap-1.5">
+                                    <i class="fa-solid fa-download"></i> Direct Download prober.exe
+                                </a>
+                                <button onclick="submitProberFromTab()" id="btn-start-prober-tab" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center space-x-2 shadow-lg shadow-emerald-600/30 transition">
+                                    <i class="fa-solid fa-play"></i>
+                                    <span id="btn-start-prober-tab-text">Apply & Launch Prober</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Manual Execution Instructions Card -->
+                        <div id="prober-manual-card" class="hidden bg-slate-900/90 border border-emerald-500/40 rounded-xl p-5 space-y-3">
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-xs font-bold text-emerald-400 uppercase tracking-wide flex items-center gap-1.5">
+                                    <i class="fa-solid fa-terminal"></i> Target Server Command
+                                </h4>
+                                <span class="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded font-mono font-bold animate-pulse">Waiting for connection...</span>
+                            </div>
+                            <p class="text-xs text-slate-300">Run this command in PowerShell on the target machine where <code class="text-emerald-300 bg-slate-950 px-1 py-0.5 rounded font-mono">prober.exe</code> is located:</p>
+                            <div class="relative">
+                                <pre id="prober-manual-cmd" class="bg-slate-950 font-mono text-xs text-emerald-300 p-3.5 pr-20 rounded-lg border border-darkborder overflow-x-auto select-all whitespace-pre-wrap"></pre>
+                                <button onclick="copyToClipboard('prober-manual-cmd')" class="absolute top-2.5 right-2.5 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded border border-darkborder transition flex items-center gap-1.5">
+                                    <i class="fa-solid fa-copy"></i> Copy
+                                </button>
+                            </div>
+                            <div class="pt-2 border-t border-darkborder/50">
+                                <span class="text-[11px] text-slate-400 block mb-1.5">Or one-liner to download from JASS and run directly (PowerShell):</span>
+                                <div class="relative">
+                                    <pre id="prober-oneliner-cmd" class="bg-slate-950 font-mono text-[11px] text-sky-300 p-3 pr-20 rounded-lg border border-darkborder overflow-x-auto select-all whitespace-pre-wrap"></pre>
+                                    <button onclick="copyToClipboard('prober-oneliner-cmd')" class="absolute top-2 right-2 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded border border-darkborder transition flex items-center gap-1.5">
+                                        <i class="fa-solid fa-copy"></i> Copy
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="text-[11px] text-slate-400 flex items-center gap-1.5 italic pt-1">
+                                <i class="fa-solid fa-circle-info text-emerald-400"></i>
+                                JASS is actively polling the target IP. Once started, the badge above will turn <strong class="text-emerald-300 not-italic">Online</strong> and you can execute Tasks.
+                            </div>
+                        </div>
+
+                        <!-- Activity & Logs -->
+                        <div class="space-y-2">
+                            <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wide flex items-center gap-1.5">
+                                <i class="fa-solid fa-file-lines text-slate-500"></i> Activity & Deployment Logs
+                            </h4>
+                            <div class="bg-slate-950 font-mono text-xs text-emerald-400 p-4 rounded-xl border border-darkborder overflow-x-auto min-h-[120px] whitespace-pre-wrap" id="prober-deploy-log">
+Waiting for configuration or start...
                             </div>
                         </div>
                     </div>
@@ -743,6 +869,16 @@
         }
 
         async function selectAndAnalyzeHost(hostIdentifier, runRemote = false) {
+            if (proberStatusInterval) {
+                clearInterval(proberStatusInterval);
+                proberStatusInterval = null;
+                const badgeEl = document.getElementById('prober-alive-badge');
+                if (badgeEl) {
+                    badgeEl.className = 'px-2.5 py-1 text-[10px] font-bold rounded-lg bg-slate-800 text-slate-400 border border-darkborder';
+                    badgeEl.innerText = 'Unknown Status';
+                }
+            }
+
             showToast(`Sniffing host '${hostIdentifier}'...`);
             document.getElementById('empty-state').classList.add('hidden');
             document.getElementById('host-view').classList.remove('hidden');
@@ -766,6 +902,8 @@
                 const data = await res.json();
                 currentPayload = data.payload;
                 renderHostDashboard(currentPayload, data.llm_prompt);
+                generateProberTabPsk();
+                pollProberStatus(currentPayload.host_name);
                 showToast(`Completed analysis for ${currentPayload.host_name}.`);
             } catch (e) {
                 showToast(`Error: ${e.message}`, true);
@@ -777,37 +915,175 @@
         }
 
 
-        async function triggerProberDeploy() {
-            if (!currentPayload) return;
-            
-            const port = prompt("Enter Prober listening port:", "8443");
-            if (!port) return;
-            const ttl = prompt("Enter Prober TTL in seconds:", "3600");
-            if (!ttl) return;
-            
-            showToast(`Deploying ephemeral Prober to ${currentPayload.host_name}...`);
-            try {
-                const res = await fetch('/api/prober/deploy', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ 
-                        host_identifier: currentPayload.host_name, 
-                        script_content: '',
-                        port: parseInt(port),
-                        ttl: parseInt(ttl)
-                    })
-                });
+        let proberStatusInterval = null;
+        let lastProberState = null;
 
-                if (!res.ok) {
-                    const err = await res.json();
-                    showToast(`Prober deploy error: ${err.detail || 'Unknown error'}`, true);
-                    return;
+        function generateProberTabPsk() {
+            const arr = new Uint8Array(16);
+            window.crypto.getRandomValues(arr);
+            const hex = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
+            const pskInput = document.getElementById('prober-tab-psk');
+            if (pskInput) pskInput.value = hex;
+        }
+
+        async function submitProberFromTab() {
+            if (!currentPayload) {
+                showToast("Please select a host first", true);
+                return;
+            }
+
+            const mode = document.querySelector('input[name="prober-tab-mode"]:checked')?.value || 'manual';
+            const port = parseInt(document.getElementById('prober-tab-port').value) || 8443;
+            const ttl = parseInt(document.getElementById('prober-tab-ttl').value) || 3600;
+            let psk = document.getElementById('prober-tab-psk').value.trim();
+            if (!psk) {
+                generateProberTabPsk();
+                psk = document.getElementById('prober-tab-psk').value.trim();
+            }
+
+            const logEl = document.getElementById('prober-deploy-log');
+            const badgeEl = document.getElementById('prober-alive-badge');
+            const manualCard = document.getElementById('prober-manual-card');
+            const btn = document.getElementById('btn-start-prober-tab');
+
+            if (mode === 'manual') {
+                badgeEl.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse';
+                badgeEl.innerHTML = '<i class="fa-solid fa-hourglass-half mr-1"></i> Waiting for Server...';
+                logEl.innerText = `[JASS] Preparing manual prober configuration for ${currentPayload.host_name} (Port: ${port}, TTL: ${ttl}s)...\n`;
+
+                try {
+                    const res = await fetch('/api/prober/manual-start', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            host_identifier: currentPayload.host_name,
+                            port: port,
+                            ttl: ttl,
+                            psk: psk
+                        })
+                    });
+
+                    if (!res.ok) {
+                        const err = await res.json();
+                        logEl.innerText += `[JASS] Error preparing manual start: ${err.detail || 'Unknown error'}\n`;
+                        badgeEl.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-red-500/20 text-red-400 border border-red-500/30';
+                        badgeEl.innerText = 'Error';
+                        showToast(`Manual start error: ${err.detail || 'Unknown error'}`, true);
+                        return;
+                    }
+
+                    const data = await res.json();
+                    document.getElementById('prober-manual-cmd').innerText = data.command;
+                    document.getElementById('prober-oneliner-cmd').innerText = data.oneliner;
+                    manualCard.classList.remove('hidden');
+
+                    logEl.innerText += `[JASS] Configuration saved successfully.\n` +
+                        `[JASS] Target Server IP: ${data.ip}\n` +
+                        `[JASS] Listening Port: ${data.port}\n` +
+                        `[JASS] PSK Key: ${data.psk}\n\n` +
+                        `>>> INSTRUCTIONS:\n` +
+                        `1. Log into server ${currentPayload.host_name} (${data.ip})\n` +
+                        `2. Run the command shown in the green card above in PowerShell\n` +
+                        `3. JASS is now polling http://${data.ip}:${data.port}/ping every 3 seconds\n` +
+                        `4. As soon as prober.exe starts, status will automatically switch to ONLINE.\n`;
+
+                    showToast(`Parameters saved! Run command on target server.`);
+                    lastProberState = false;
+                    startProberPolling(currentPayload.host_name, 3000);
+                } catch (e) {
+                    logEl.innerText += `[JASS] Error: ${e.message}\n`;
+                    badgeEl.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-red-500/20 text-red-400 border border-red-500/30';
+                    badgeEl.innerText = 'Error';
+                    showToast(`Error: ${e.message}`, true);
                 }
+            } else {
+                // Automatic mode (Zabbix dropper)
+                manualCard.classList.add('hidden');
+                badgeEl.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 animate-pulse';
+                badgeEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Deploying via Zabbix...';
+                logEl.innerText = `[JASS] Deploying ephemeral Prober via Zabbix agent to ${currentPayload.host_name} on port ${port}...\n`;
 
-                const data = await res.json();
-                showToast(`Prober deployed to ${data.ip}:${data.port}. Execution in background.`);
+                showToast(`Deploying ephemeral Prober to ${currentPayload.host_name}...`);
+                try {
+                    const res = await fetch('/api/prober/deploy', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            host_identifier: currentPayload.host_name,
+                            script_content: '',
+                            port: port,
+                            ttl: ttl,
+                            psk: psk
+                        })
+                    });
+
+                    if (!res.ok) {
+                        const err = await res.json();
+                        logEl.innerText += `\nDeployment failed:\n${err.detail || 'Unknown error'}\n`;
+                        badgeEl.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-red-500/20 text-red-400 border border-red-500/30';
+                        badgeEl.innerText = 'Deployment Failed';
+                        showToast(`Prober deploy error: ${err.detail || 'Unknown error'}`, true);
+                        return;
+                    }
+
+                    const data = await res.json();
+                    logEl.innerText += `\n--- Zabbix Dropper Output ---\n${data.dropper_output}\n-----------------------------\n`;
+                    logEl.innerText += `\n[JASS] Prober agent should now be running on ${data.ip}:${data.port}. Polling status...`;
+
+                    showToast(`Prober deployed to ${data.ip}:${data.port}.`);
+                    lastProberState = false;
+                    startProberPolling(currentPayload.host_name, 5000);
+                } catch (e) {
+                    logEl.innerText += `\nError: ${e.message}`;
+                    badgeEl.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-red-500/20 text-red-400 border border-red-500/30';
+                    badgeEl.innerText = 'Error';
+                    showToast(`Error: ${e.message}`, true);
+                }
+            }
+        }
+
+        function checkProberStatusManual() {
+            if (currentPayload) {
+                pollProberStatus(currentPayload.host_name, true);
+            } else {
+                showToast("Select a host first", true);
+            }
+        }
+
+        function startProberPolling(hostIdentifier, intervalMs = 4000) {
+            if (proberStatusInterval) clearInterval(proberStatusInterval);
+            pollProberStatus(hostIdentifier);
+            proberStatusInterval = setInterval(() => pollProberStatus(hostIdentifier), intervalMs);
+        }
+
+        async function pollProberStatus(hostIdentifier, userTriggered = false) {
+            const badgeEl = document.getElementById('prober-alive-badge');
+            if (!badgeEl) return;
+            try {
+                const res = await fetch(`/api/prober/status/${hostIdentifier}`);
+                if (res.ok) {
+                    const data = await res.json();
+                    if (data.is_alive) {
+                        badgeEl.className = 'px-2.5 py-1 text-[10px] font-bold rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+                        badgeEl.innerHTML = '<i class="fa-solid fa-circle-check mr-1"></i> Online';
+                        if (lastProberState === false) {
+                            showToast(`Prober on ${hostIdentifier} is now ONLINE! Tasks unlocked.`, false);
+                            const logEl = document.getElementById('prober-deploy-log');
+                            if (logEl) logEl.innerText += `\n[${new Date().toLocaleTimeString()}] Prober connected successfully! Agent responded to PING.\n`;
+                        }
+                        lastProberState = true;
+                    } else {
+                        badgeEl.className = 'px-2.5 py-1 text-[10px] font-bold rounded-lg bg-red-500/20 text-red-400 border border-red-500/30';
+                        badgeEl.innerHTML = '<i class="fa-solid fa-circle-xmark mr-1"></i> Offline / Unreachable';
+                        lastProberState = false;
+                        if (userTriggered) showToast(`Prober on ${hostIdentifier} is unreachable.`, true);
+                    }
+                } else {
+                    badgeEl.className = 'px-2.5 py-1 text-[10px] font-bold rounded-lg bg-slate-800 text-slate-400 border border-darkborder';
+                    badgeEl.innerText = 'Unknown';
+                }
             } catch (e) {
-                showToast(`Error: ${e.message}`, true);
+                // ignore
             }
         }
 

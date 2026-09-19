@@ -61,6 +61,10 @@ jass/
 │   │   └── windows_sniffer.py # Dedicated Windows & Hyper-V sniffer module
 │   ├── analyzers/
 │   │   └── zabbix_analyzer.py # High-level orchestrator for host/group scanning
+│   ├── agent/                 # Lightweight Go Prober Agent & build tools
+│   │   ├── prober.go          # Prober source code
+│   │   ├── build.py           # Automated cross-compilation & PE patch script
+│   │   └── README.md          # Prober documentation & build instructions
 │   ├── ui/
 │   │   ├── app.py             # FastAPI Web Dashboard application & REST endpoints
 │   │   └── templates/
@@ -116,6 +120,13 @@ ZABBIX_TIMEOUT=15
 ZABBIX_VERIFY_SSL=true
 JASS_OUTPUT_DIR=./analysis_reports
 ```
+
+### 4. Compile the Prober Agent (Optional)
+JASS includes a lightweight ephemeral Go agent for deep diagnostics. Executable files (`*.exe`) are excluded from version control. You can build `prober.exe` using the automated build script:
+```bash
+python3 jass/agent/build.py
+```
+This builds `prober.exe` and `prober-x86.exe` and automatically patches the PE headers to Subsystem Version `6.0` to support legacy Windows editions (Windows Server 2008 / 2008 R2 / Windows 7) as well as modern Windows 10/11/Server 2016-2025. See [jass/agent/README.md](jass/agent/README.md) for details.
 
 ---
 

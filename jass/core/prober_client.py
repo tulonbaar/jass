@@ -27,9 +27,10 @@ class ProberClient:
     def close(self):
         self.db.close()
 
-    def update_psk(self, psk: str, ttl: int):
+    def update_psk(self, psk: str, ttl: int, port: int = 8443):
         self.config.psk = psk
         self.config.ttl_seconds = ttl
+        self.config.port = port
         self.db.commit()
 
     def is_alive(self) -> bool:

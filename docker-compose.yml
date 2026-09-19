@@ -19,6 +19,7 @@ services:
     depends_on:
       - jass-db
     volumes:
+      - .:/app
       - ./.env:/app/.env
 
 volumes:

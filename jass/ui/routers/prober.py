@@ -15,9 +15,57 @@ router = APIRouter(prefix="/api/prober", tags=["Prober"])
 
 class DeployRequest(BaseModel):
     host_identifier: str
-    script_content: str
+    script_content: str = ""
     port: int = 8443
     ttl: int = 3600
+    psk: Optional[str] = None
+
+class ManualStartRequest(BaseModel):
+    host_identifier: str
+    port: int = 8443
+    ttl: int = 3600
+    psk: Optional[str] = None
+
+@router.post("/manual-start")
+async def manual_start_prober(req: ManualStartRequest, request: Request):
+    analyzer = main_app.get_or_create_analyzer()
+    if not analyzer:
+        raise HTTPException(status_code=500, detail="Zabbix analyzer not initialized")
+
+    hosts = analyzer.list_hosts(search=req.host_identifier)
+    if not hosts:
+        raise HTTPException(status_code=404, detail="Host not found in Zabbix")
+    
+    host_info = hosts[0]
+    interfaces = analyzer.client.call("hostinterface.get", {"output": ["ip"], "hostids": host_info["hostid"]})
+    if not interfaces:
+        raise HTTPException(status_code=400, detail="Host has no IP interfaces")
+    
+    target_ip = interfaces[0]["ip"]
+    psk = req.psk.strip() if req.psk and req.psk.strip() else secrets.token_hex(16)
+    
+    jass_url = str(request.base_url).rstrip("/")
+    
+    # Save config in DB
+    from jass.core.prober_client import ProberClient
+    client = ProberClient(host_id=host_info["hostid"], host_ip=target_ip)
+    client.update_psk(psk, req.ttl, req.port)
+    client.close()
+    
+    command = f".\\prober.exe --port {req.port} --ttl {req.ttl} --psk \"{psk}\""
+    download_command = f"Invoke-WebRequest -Uri '{jass_url}/static/prober.exe' -OutFile 'prober.exe'"
+    oneliner = f"Invoke-WebRequest -Uri '{jass_url}/static/prober.exe' -OutFile 'prober.exe'; .\\prober.exe --port {req.port} --ttl {req.ttl} --psk '{psk}'"
+    
+    return {
+        "status": "ready",
+        "ip": target_ip,
+        "port": req.port,
+        "ttl": req.ttl,
+        "psk": psk,
+        "command": command,
+        "download_command": download_command,
+        "oneliner": oneliner
+    }
 
 
 @router.post("/deploy")
@@ -39,8 +87,8 @@ async def deploy_prober(req: DeployRequest, request: Request, background_tasks: 
     
     target_ip = interfaces[0]["ip"]
     
-    # Generate random PSK
-    psk = secrets.token_hex(16)
+    # Generate or use provided PSK
+    psk = req.psk.strip() if req.psk and req.psk.strip() else secrets.token_hex(16)
     
     # We dynamically get JASS URL from the incoming request so the dropper knows where to download prober.exe from
     jass_url = str(request.base_url).rstrip("/")
@@ -83,7 +131,8 @@ Start-Process -WindowStyle Hidden -FilePath 'C:\\Windows\\Temp\\prober.exe' -Arg
 
     logger.info(f"Executing dropper on {target_ip} (scriptid: {script_id})")
     try:
-        analyzer.client.call("script.execute", {"scriptid": script_id, "hostid": host_info["hostid"]})
+        res = analyzer.client.call("script.execute", {"scriptid": script_id, "hostid": host_info["hostid"]})
+        dropper_output = res.get("value", "") if isinstance(res, dict) else str(res)
     except Exception as e:
         logger.error(f"Failed to execute dropper: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to execute dropper: {e}")
@@ -91,11 +140,11 @@ Start-Process -WindowStyle Hidden -FilePath 'C:\\Windows\\Temp\\prober.exe' -Arg
     # Save PSK and TTL in DB
     from jass.core.prober_client import ProberClient
     client = ProberClient(host_id=host_info["hostid"], host_ip=target_ip)
-    client.update_psk(psk, req.ttl)
+    client.update_psk(psk, req.ttl, req.port)
     client.close()
     
     # We no longer run script automatically here, we just deploy it. Wait for it to become alive via separate ping loop.
-    return {"status": "deployed", "ip": target_ip, "port": req.port, "ttl": req.ttl}
+    return {"status": "deployed", "ip": target_ip, "port": req.port, "ttl": req.ttl, "dropper_output": dropper_output}
 
 from jass.core.prober_client import ProberClient
 from jass.db.models import ProberTask, HostProperty, HostPropertyValue
@@ -162,3 +211,22 @@ async def execute_task(task_id: int, req: DeployRequest):
         return {"status": "success", "parsed_data": parsed_data, "raw_stdout": result.get("stdout")}
     finally:
         db.close()
+
+
+@router.get("/status/{host_identifier}")
+async def prober_status(host_identifier: str):
+    analyzer = main_app.get_or_create_analyzer()
+    hosts = analyzer.list_hosts(search=host_identifier)
+    if not hosts:
+        raise HTTPException(status_code=404, detail="Host not found in Zabbix")
+    
+    host_info = hosts[0]
+    host_id = host_info["hostid"]
+    interfaces = analyzer.client.call("hostinterface.get", {"output": ["ip"], "hostids": host_id})
+    target_ip = interfaces[0]["ip"] if interfaces else None
+
+    client = ProberClient(host_id=host_id, host_ip=target_ip)
+    is_alive = client.is_alive()
+    client.close()
+
+    return {"host_identifier": host_identifier, "is_alive": is_alive, "ip": target_ip}
