@@ -648,15 +648,34 @@ class WindowsSniffer(BaseSystemSniffer):
             if target_task.parser_id:
                 try:
                     local_env = {}
-                    exec(target_task.parser.code, {}, local_env)
+                    exec(target_task.parser.code, local_env)
                     if "parse" in local_env:
                         parsed_data = local_env["parse"](raw_output)
                 except Exception as e:
                     logger.error(f"Parser error: {e}")
 
+            # Map to properties in DB if configured
+            if target_task.map_to_properties and parsed_data and isinstance(parsed_data, dict):
+                from jass.db.models import HostProperty, HostPropertyValue
+                try:
+                    for prop_name, value in parsed_data.items():
+                        prop = db.query(HostProperty).filter_by(name=prop_name).first()
+                        if prop:
+                            val_record = db.query(HostPropertyValue).filter_by(host_id=host_id, property_id=prop.id).first()
+                            if not val_record:
+                                val_record = HostPropertyValue(host_id=host_id, property_id=prop.id)
+                                db.add(val_record)
+                            val_record.value = value
+                    db.commit()
+                except Exception as map_err:
+                    logger.warning(f"Failed to map properties to DB: {map_err}")
+
             parsed_ports: List[Dict[str, Any]] = []
-            if probe_key == "listening_ports" and isinstance(parsed_data, list):
-                parsed_ports = parsed_data
+            if probe_key == "listening_ports":
+                if isinstance(parsed_data, list):
+                    parsed_ports = parsed_data
+                elif isinstance(parsed_data, dict) and "listening_ports" in parsed_data:
+                    parsed_ports = parsed_data["listening_ports"]
 
             return RemoteExecutionResult(
                 script_name=target_task.name,

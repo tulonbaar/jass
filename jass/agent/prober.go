@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/rand"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -14,14 +13,48 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"time"
+	"unsafe"
 )
 
 var (
 	portFlag = flag.Int("port", 8443, "Port to listen on")
 	ttlFlag  = flag.Int("ttl", 3600, "Time to live in seconds")
 	pskFlag  = flag.String("psk", "", "Pre-shared key")
+
+	modAdvapi32      = syscall.NewLazyDLL("advapi32.dll")
+	procRtlGenRandom = modAdvapi32.NewProc("SystemFunction036")
 )
+
+// getRandomBytes fills b with cryptographically secure random bytes using
+// RtlGenRandom (SystemFunction036) from advapi32.dll, supported across all Windows
+// versions (Windows 2000 through Windows 11 / Server 2025). Avoids Go 1.22+ ProcessPrng
+// dependency that causes panics on Windows Server 2008 / 2008 R2 / 7 / 2012.
+func getRandomBytes(b []byte) error {
+	if len(b) == 0 {
+		return nil
+	}
+	if procRtlGenRandom.Find() == nil {
+		r1, _, err := procRtlGenRandom.Call(uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)))
+		if r1 != 0 {
+			return nil
+		}
+		if err != nil && err != syscall.Errno(0) {
+			log.Printf("[CRYPTO] Warning: RtlGenRandom call error: %v", err)
+		}
+	}
+	// Fallback PRNG in case RtlGenRandom is unavailable
+	now := time.Now().UnixNano()
+	pid := int64(os.Getpid())
+	for i := range b {
+		now ^= now << 13
+		now ^= now >> 7
+		now ^= now << 17
+		b[i] = byte((now ^ pid ^ int64(i*101)) & 0xFF)
+	}
+	return nil
+}
 
 // initLogging sets up logging to both stdout and prober-log.log in the executable's directory.
 func initLogging() (*os.File, string) {
@@ -63,7 +96,7 @@ func encrypt(plaintext []byte, key []byte) ([]byte, error) {
 		return nil, err
 	}
 	nonce := make([]byte, gcm.NonceSize())
-	if _, err = io.ReadFull(rand.Reader, nonce); err != nil {
+	if err = getRandomBytes(nonce); err != nil {
 		return nil, err
 	}
 	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)

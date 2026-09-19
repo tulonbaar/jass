@@ -44,7 +44,7 @@ async def manual_start_prober(req: ManualStartRequest, request: Request):
     target_ip = interfaces[0]["ip"]
     psk = req.psk.strip() if req.psk and req.psk.strip() else secrets.token_hex(16)
     
-    jass_url = str(request.base_url).rstrip("/")
+    jass_url = os.environ.get("JASS_BASE_URL", "").rstrip("/") or str(request.base_url).rstrip("/")
     
     # Save config in DB
     from jass.core.prober_client import ProberClient
@@ -53,8 +53,8 @@ async def manual_start_prober(req: ManualStartRequest, request: Request):
     client.close()
     
     command = f".\\prober.exe --port {req.port} --ttl {req.ttl} --psk \"{psk}\""
-    download_command = f"Invoke-WebRequest -Uri '{jass_url}/static/prober.exe' -OutFile 'prober.exe'"
-    oneliner = f"Invoke-WebRequest -Uri '{jass_url}/static/prober.exe' -OutFile 'prober.exe'; .\\prober.exe --port {req.port} --ttl {req.ttl} --psk '{psk}'"
+    download_command = f"(New-Object System.Net.WebClient).DownloadFile('{jass_url}/static/prober.exe', 'prober.exe')"
+    oneliner = f"(New-Object System.Net.WebClient).DownloadFile('{jass_url}/static/prober.exe', 'prober.exe'); .\\prober.exe --port {req.port} --ttl {req.ttl} --psk '{psk}'"
     
     return {
         "status": "ready",
@@ -74,8 +74,11 @@ async def deploy_prober(req: DeployRequest, request: Request, background_tasks: 
     if not analyzer:
         raise HTTPException(status_code=500, detail="Zabbix analyzer not initialized")
 
-    # Resolve host to IP (using Zabbix Analyzer)
-    hosts = analyzer.list_hosts(search=req.host_identifier)
+    hosts = analyzer.client.call("host.get", {
+        "output": ["hostid", "host", "name"],
+        "filter": {"host": [req.host_identifier]} if not req.host_identifier.isdigit() else {},
+        "hostids": [req.host_identifier] if req.host_identifier.isdigit() else None
+    })
     if not hosts:
         raise HTTPException(status_code=404, detail="Host not found in Zabbix")
     
@@ -90,13 +93,14 @@ async def deploy_prober(req: DeployRequest, request: Request, background_tasks: 
     # Generate or use provided PSK
     psk = req.psk.strip() if req.psk and req.psk.strip() else secrets.token_hex(16)
     
-    # We dynamically get JASS URL from the incoming request so the dropper knows where to download prober.exe from
-    jass_url = str(request.base_url).rstrip("/")
-    # Using curl/wget on windows via powershell (Invoke-WebRequest)
+    jass_url = os.environ.get("JASS_BASE_URL", "").rstrip("/") or str(request.base_url).rstrip("/")
+    # Using WebClient for universal compatibility across PowerShell 2.0 through 7+
     dropper_ps = f"""
 $ErrorActionPreference = 'Stop'
-[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
-Invoke-WebRequest -Uri '{jass_url}/static/prober.exe' -OutFile 'C:\\Windows\\Temp\\prober.exe'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11 -bor [Net.SecurityProtocolType]::Tls
+Get-Process 'prober*' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Sleep -Seconds 1
+(New-Object System.Net.WebClient).DownloadFile('{jass_url}/static/prober.exe', 'C:\\Windows\\Temp\\prober.exe')
 Start-Process -WindowStyle Hidden -FilePath 'C:\\Windows\\Temp\\prober.exe' -ArgumentList '--port {req.port} --ttl {req.ttl} --psk {psk}'
 """
     
@@ -187,7 +191,7 @@ async def execute_task(task_id: int, req: DeployRequest):
             try:
                 # Dynamic exec of parser code
                 local_env = {}
-                exec(task.parser.code, {}, local_env)
+                exec(task.parser.code, local_env)
                 if "parse" in local_env:
                     parsed_data = local_env["parse"](result.get("stdout", ""))
                 else:
@@ -227,6 +231,16 @@ async def prober_status(host_identifier: str):
 
     client = ProberClient(host_id=host_id, host_ip=target_ip)
     is_alive = client.is_alive()
+    port = client.config.port
+    psk = client.config.psk
+    ttl = client.config.ttl_seconds
     client.close()
 
-    return {"host_identifier": host_identifier, "is_alive": is_alive, "ip": target_ip}
+    return {
+        "host_identifier": host_identifier,
+        "is_alive": is_alive,
+        "ip": target_ip,
+        "port": port,
+        "psk": psk,
+        "ttl": ttl,
+    }

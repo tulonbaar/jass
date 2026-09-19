@@ -92,8 +92,11 @@ class ZabbixAnalyzer:
         if group_ids:
             params["groupids"] = group_ids
         if search:
-            params["search"] = {"host": search, "name": search}
-            params["searchByAny"] = True
+            if str(search).isdigit():
+                params["hostids"] = [str(search)]
+            else:
+                params["search"] = {"host": search, "name": search}
+                params["searchByAny"] = True
 
         res = self.client.call("host.get", params)
         return sorted(res, key=lambda x: x.get("name", ""))
