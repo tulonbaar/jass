@@ -170,9 +170,6 @@ func executeHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
-	// Execute PowerShell via Stdin with -ExecutionPolicy Bypass to avoid argument length limits, quoting issues, or policy restrictions
-	cmd := exec.CommandContext(ctx, "powershell.exe", "-NonInteractive", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "-")
-	cmd.Stdin = strings.NewReader(req.Script)
 	// Write script to a temp .ps1 file and execute via -File.
 	// This is required for PowerShell 2.0 compatibility: the Stdin approach
 	// (-Command -) silently breaks on PS 2.0 when scripts combine function

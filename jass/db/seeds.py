@@ -3,8 +3,6 @@ from jass.db.database import get_db, Base, engine
 from jass.db.models import PropertyCategory, HostProperty, ProberParser, ProberTask
 from datetime import datetime
 
-# Common PowerShell preamble
-_PS_PREAMBLE = "$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='SilentlyContinue';"
 # Common PowerShell preamble with ConvertTo-Json polyfill for PowerShell 2.0
 # The polyfill is conditional: only activates when ConvertTo-Json is not available (PS 2.0).
 # Uses a recursive pure-PowerShell JSON encoder to avoid JavaScriptSerializer's
@@ -234,18 +232,9 @@ PROBES = [
             _PS_PREAMBLE + " "
             "$c = Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue; "
             "if ($c) { $res = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue; if ($res) { $res | Select-Object LocalAddress,LocalPort,OwningProcess,@{N='Process';E={(Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName}} | ConvertTo-Json -Compress; exit 0 } }; "
-            "$ports = netstat -ano -p tcp | Where-Object { $_ -match '(?i)LISTEN|NAS' }; "
             "$ports = netstat -ano -p tcp | Where-Object { $_ -match '(?i)LISTEN' }; "
             "$out = @(); "
             "foreach ($p in $ports) { "
-            "  $line = $p.ToString().Trim(); "
-            "  $m = [regex]::Match($line, '^\\\\s*TCP\\\\s+([0-9.\\\\[\\\\]:]+):(\\\\d+)\\\\s+.*?\\\\s+(\\\\d+)\\\\s*$'); "
-            "  if ($m.Success) { "
-            "    $targetPid = [int]$m.Groups[3].Value; "
-            "    $port = [int]$m.Groups[2].Value; "
-            "    $addr = $m.Groups[1].Value; "
-            "    $proc = ''; try { $proc = (Get-Process -Id $targetPid -ErrorAction SilentlyContinue).ProcessName } catch {}; "
-            "    $out += [PSCustomObject]@{LocalAddress=$addr;LocalPort=$port;OwningProcess=$targetPid;Process=$proc} "
             "  $parts = [regex]::Split($p.ToString().Trim(), '\\s+'); "
             "  if ($parts.Count -ge 5 -and $parts[0] -eq 'TCP') { "
             "    $local = $parts[1]; "
@@ -271,7 +260,6 @@ PROBES = [
             "$bios = &$getCim Win32_BIOS; "
             "$cs = &$getCim Win32_ComputerSystem; "
             "$cpus = @(&$getCim Win32_Processor | Select-Object -ExpandProperty Name); "
-            "$ram = if ($cs -and $cs.TotalPhysicalMemory) { [math]::Round($cs.TotalPhysicalMemory / 1GB, 2) } else { 0 }; "
             "$ram = 0; if ($cs -and $cs.TotalPhysicalMemory) { $ram = [math]::Round($cs.TotalPhysicalMemory / 1GB, 2) }; "
             "$nics = @(&$getCim Win32_NetworkAdapter | Where-Object { $_.NetConnectionStatus -eq 2 } | Select-Object Name, MACAddress, Speed); "
             "$disks = @(&$getCim Win32_DiskDrive | Select-Object Model, Size, InterfaceType); "
@@ -294,8 +282,6 @@ PROBES = [
         "description": "Collects Warning/Error entries from System and Application logs from the last 24 hours.",
         "command": (
             _PS_PREAMBLE + " "
-            "$events = @(Get-WinEvent -FilterHashtable @{LogName='System','Application';Level=1,2;StartTime=(Get-Date).AddHours(-24)} -MaxEvents 50 -ErrorAction SilentlyContinue | "
-            "Select-Object @{N='TimeCreated';E={$_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')}},LogName,Id,LevelDisplayName,ProviderName,@{N='Message';E={ if ($_.Message) { $m = $_.Message; foreach($q in 8222,8221,8220,8216,8217,34){ $m = $m.Replace([char]$q, [char]39) }; $m } else { '' } }}); "
             "$events = @(); "
             "$winEvt = Get-Command Get-WinEvent -ErrorAction SilentlyContinue; "
             "if ($winEvt) { "
@@ -322,8 +308,6 @@ PROBES = [
             "$known = 'Windows','Program Files','Program Files (x86)','Users','ProgramData','$Recycle.Bin','System Volume Information','PerfLogs'; "
             "$out = @(); "
             "Get-PSDrive -PSProvider FileSystem | ForEach-Object { $d = $_.Root; "
-            "Get-ChildItem -Path $d -Directory -ErrorAction SilentlyContinue | ForEach-Object { "
-            "$subs = ''; try { $subs = ([System.IO.Directory]::EnumerateDirectories($_.FullName) | ForEach-Object { [System.IO.Path]::GetFileName($_) }) -join ', ' } catch {}; $out += [PSCustomObject]@{Drive=$d;Folder=$_.Name;Standard=($known -contains $_.Name);Subfolders=$subs} } }; "
             "Get-ChildItem -Path $d -ErrorAction SilentlyContinue | Where-Object { $_.PSIsContainer } | ForEach-Object { "
             "$subs = ''; try { $subs = ([System.IO.Directory]::GetDirectories($_.FullName) | ForEach-Object { [System.IO.Path]::GetFileName($_) }) -join ', ' } catch {}; $out += [PSCustomObject]@{Drive=$d;Folder=$_.Name;Standard=($known -contains $_.Name);Subfolders=$subs} } }; "
             "if ($out.Count -eq 0) { '[]' } else { $out | ConvertTo-Json -Compress }; exit 0"
@@ -337,8 +321,6 @@ PROBES = [
             "$ts = Get-ItemProperty -Path 'HKLM:\\System\\CurrentControlSet\\Control\\Terminal Server' -ErrorAction SilentlyContinue; "
             "$rdp = Get-ItemProperty -Path 'HKLM:\\System\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp' -ErrorAction SilentlyContinue; "
             "$qwinsta = ''; try { $qwinsta = (qwinsta 2>$null | Out-String).Trim() } catch {}; "
-            "$enabled = if ($ts -and $ts.fDenyTSConnections -ne $null) { $ts.fDenyTSConnections -eq 0 } else { $false }; "
-            "$port = if ($rdp -and $rdp.PortNumber -ne $null) { [int]$rdp.PortNumber } else { 3389 }; "
             "$enabled = $false; if ($ts -and $ts.fDenyTSConnections -ne $null) { $enabled = ($ts.fDenyTSConnections -eq 0) }; "
             "$port = 3389; if ($rdp -and $rdp.PortNumber -ne $null) { $port = [int]$rdp.PortNumber }; "
             "[PSCustomObject]@{TSEnabled=$enabled;Port=$port;Sessions=$qwinsta} | ConvertTo-Json -Compress; exit 0"
@@ -349,10 +331,7 @@ PROBES = [
         "description": "Retrieves counts of interactive logins per user over the last 7 days.",
         "command": (
             _PS_PREAMBLE + " "
-            "$events = Get-WinEvent -FilterHashtable @{LogName='Security';ID=4624;StartTime=(Get-Date).AddDays(-7)} -ErrorAction SilentlyContinue; "
             "$matched = @(); "
-            "if ($events) { foreach ($e in $events) { if ($e.Properties.Count -gt 8 -and ($e.Properties[8].Value -in 2,10)) { "
-            "$user = $e.Properties[5].Value; if ($user -notmatch 'UMFD|DWM') { $matched += [PSCustomObject]@{User=$user} } } } }; "
             "$winEvt = Get-Command Get-WinEvent -ErrorAction SilentlyContinue; "
             "if ($winEvt) { "
             "  $events = Get-WinEvent -FilterHashtable @{LogName='Security';ID=4624;StartTime=(Get-Date).AddDays(-7)} -ErrorAction SilentlyContinue; "
