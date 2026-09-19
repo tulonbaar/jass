@@ -1,25 +1,36 @@
 import asyncio
+from collections import defaultdict
+from datetime import datetime
 import logging
 import os
 import secrets
 import time
 import requests
-from fastapi import APIRouter, HTTPException, BackgroundTasks, Request
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-from typing import Optional, Any
+from typing import Optional, Any, List, Dict
 from jass.core.prober_crypto import encrypt_payload, decrypt_payload
-import jass.ui.app as main_app # To use state["analyzer"]
+from jass.core.prober_client import ProberClient
+from jass.db.models import ProberTask, HostProperty, HostPropertyValue
+def _get_analyzer():
+    import jass.ui.app as main_app
+    return main_app.get_or_create_analyzer()
 
 logger = logging.getLogger("jass.prober")
 
 router = APIRouter(prefix="/api/prober", tags=["Prober"])
 
-class DeployRequest(BaseModel):
-    host_identifier: str
-    script_content: str = ""
-    port: int = 8443
-    ttl: int = 3600
-    psk: Optional[str] = None
+# In-memory per-host activity logs buffer
+_HOST_LOGS: Dict[str, List[str]] = defaultdict(list)
+
+def log_host_event(host_identifier: str, message: str):
+    """Appends an event to the host's activity log buffer."""
+    now_str = datetime.now().strftime("%H:%M:%S")
+    entry = f"[{now_str}] {message}"
+    logs = _HOST_LOGS[str(host_identifier)]
+    logs.append(entry)
+    if len(logs) > 200:
+        del logs[0:len(logs)-200]
 
 class ManualStartRequest(BaseModel):
     host_identifier: str
@@ -27,10 +38,19 @@ class ManualStartRequest(BaseModel):
     ttl: int = 3600
     psk: Optional[str] = None
 
+class ExecuteTaskRequest(BaseModel):
+    host_identifier: str
+    port: Optional[int] = None
+    ttl: Optional[int] = None
+    psk: Optional[str] = None
+
+# Backwards-compatible alias
+DeployRequest = ExecuteTaskRequest
+
 @router.post("/manual-start")
 async def manual_start_prober(req: ManualStartRequest, request: Request):
     try:
-        analyzer = main_app.get_or_create_analyzer()
+        analyzer = _get_analyzer()
         if not analyzer:
             raise HTTPException(status_code=500, detail="Zabbix analyzer not initialized")
 
@@ -49,12 +69,15 @@ async def manual_start_prober(req: ManualStartRequest, request: Request):
         jass_url = os.environ.get("JASS_BASE_URL", "").rstrip("/") or str(request.base_url).rstrip("/")
         
         # Save config in DB
-        from jass.core.prober_client import ProberClient
         client = ProberClient(host_id=host_info["hostid"], host_ip=target_ip)
         try:
             client.update_psk(psk, req.ttl, req.port)
         finally:
             client.close()
+        
+        log_host_event(host_info["hostid"], f"Configured parameters: Port={req.port}, TTL={req.ttl}s, PSK length={len(psk)}")
+        if req.host_identifier != host_info["hostid"]:
+            log_host_event(req.host_identifier, f"Configured parameters: Port={req.port}, TTL={req.ttl}s")
         
         command = f".\\prober.exe --port {req.port} --ttl {req.ttl} --psk \"{psk}\""
         download_command = f"(New-Object System.Net.WebClient).DownloadFile('{jass_url}/static/prober.exe', 'prober.exe')"
@@ -77,110 +100,104 @@ async def manual_start_prober(req: ManualStartRequest, request: Request):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/deploy")
-async def deploy_prober(req: DeployRequest, request: Request, background_tasks: BackgroundTasks):
+@router.post("/stop/{host_identifier}")
+@router.post("/terminate/{host_identifier}")
+async def stop_prober(host_identifier: str):
+    """Sends termination signal to the prober agent, removes firewall rule, and deletes executable."""
     try:
-        analyzer = main_app.get_or_create_analyzer()
-        if not analyzer:
-            raise HTTPException(status_code=500, detail="Zabbix analyzer not initialized")
-
-        hosts = analyzer.client.call("host.get", {
-            "output": ["hostid", "host", "name"],
-            "filter": {"host": [req.host_identifier]} if not req.host_identifier.isdigit() else {},
-            "hostids": [req.host_identifier] if req.host_identifier.isdigit() else None
-        })
+        analyzer = _get_analyzer()
+        hosts = analyzer.list_hosts(search=host_identifier)
         if not hosts:
             raise HTTPException(status_code=404, detail="Host not found in Zabbix")
         
         host_info = hosts[0]
-        # Pick agent IP
-        interfaces = analyzer.client.call("hostinterface.get", {"output": ["ip"], "hostids": host_info["hostid"]})
-        if not interfaces:
+        host_id = host_info["hostid"]
+        interfaces = analyzer.client.call("hostinterface.get", {"output": ["ip"], "hostids": host_id})
+        target_ip = interfaces[0]["ip"] if interfaces else None
+        if not target_ip:
             raise HTTPException(status_code=400, detail="Host has no IP interfaces")
-        
-        target_ip = interfaces[0]["ip"]
-        
-        # Generate or use provided PSK
-        psk = req.psk.strip() if req.psk and req.psk.strip() else secrets.token_hex(16)
-        
-        jass_url = os.environ.get("JASS_BASE_URL", "").rstrip("/") or str(request.base_url).rstrip("/")
-        # Using powershell one-liner with WebClient and wmic to break away from Zabbix Agent's job object
-        dropper_cmd = (
-            'powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "'
-            'Get-Process prober* -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue; '
-            'Start-Sleep -Seconds 1; '
-            f'(New-Object System.Net.WebClient).DownloadFile(\'{jass_url}/static/prober.exe\', \'C:\\\\Windows\\\\Temp\\\\prober.exe\'); '
-            f'wmic process call create \'C:\\\\Windows\\\\Temp\\\\prober.exe --port {req.port} --ttl {req.ttl} --psk {psk}\'"'
-        )
-        
-        logger.info(f"Deploying prober to {target_ip} from {jass_url}")
-        
-        script_name = "JASS Prober Dropper"
-        available_scripts = analyzer.client.call("script.get", {"hostids": [host_info["hostid"]]})
-        target_script = next((sc for sc in available_scripts if sc.get("name") == script_name), None)
-                
-        if not target_script:
-            logger.info(f"Creating Zabbix script '{script_name}'")
-            try:
-                created = analyzer.client.call(
-                    "script.create",
-                    {
-                        "name": script_name,
-                        "command": dropper_cmd,
-                        "type": 0,  # 0 = Script
-                        "scope": 2,  # 2 = Manual host action
-                        "execute_on": 0,  # 0 = Zabbix agent
-                        "description": "Deploys ephemeral JASS Prober agent",
-                    },
-                )
-                script_id = created["scriptids"][0]
-            except Exception as e:
-                logger.error(f"Failed to create dropper script: {e}")
-                raise HTTPException(status_code=500, detail=f"Failed to create dropper script: {e}")
-        else:
-            script_id = target_script["scriptid"]
-            # Always update script to ensure correct payload and jass_url
-            analyzer.client.call("script.update", {"scriptid": script_id, "command": dropper_cmd})
 
-        logger.info(f"Executing dropper on {target_ip} (scriptid: {script_id})")
+        client = ProberClient(host_id=host_id, host_ip=target_ip)
         try:
-            res = analyzer.client.call("script.execute", {"scriptid": script_id, "hostid": host_info["hostid"]})
-            dropper_output = res.get("value", "") if isinstance(res, dict) else str(res)
-        except Exception as e:
-            logger.error(f"Failed to execute dropper: {e}")
-            raise HTTPException(status_code=500, detail=f"Failed to execute dropper: {e}")
-        
-        # Save PSK and TTL in DB
-        from jass.core.prober_client import ProberClient
-        client = ProberClient(host_id=host_info["hostid"], host_ip=target_ip)
-        try:
-            client.update_psk(psk, req.ttl, req.port)
+            log_host_event(host_id, f"Sending termination & self-destruct signal to {target_ip}:{client.config.port}...")
+            terminated = client.terminate()
+            client.config.is_active = False
+            client.db.commit()
+            if terminated:
+                log_host_event(host_id, "Prober accepted termination command. Windows firewall rule removed and executable scheduled for deletion.")
+            else:
+                log_host_event(host_id, "Prober did not respond to termination (agent may already be stopped).")
+            return {"status": "terminated", "success": terminated}
         finally:
             client.close()
-        
-        # We no longer run script automatically here, we just deploy it. Wait for it to become alive via separate ping loop.
-        return {"status": "deployed", "ip": target_ip, "port": req.port, "ttl": req.ttl, "dropper_output": dropper_output}
     except HTTPException:
         raise
     except Exception as e:
-        logger.exception("Deploy prober error:")
+        logger.exception("Stop prober error:")
         raise HTTPException(status_code=500, detail=str(e))
 
-from jass.core.prober_client import ProberClient
-from jass.db.models import ProberTask, HostProperty, HostPropertyValue
-from jass.db.database import SessionLocal
+
+@router.get("/logs/{host_identifier}")
+async def prober_logs(host_identifier: str, tail: int = 50):
+    """Fetches real-time combined logs: server-side activity events and remote agent logs."""
+    try:
+        analyzer = _get_analyzer()
+        hosts = analyzer.list_hosts(search=host_identifier)
+        if not hosts:
+            raise HTTPException(status_code=404, detail="Host not found in Zabbix")
+        
+        host_info = hosts[0]
+        host_id = host_info["hostid"]
+        interfaces = analyzer.client.call("hostinterface.get", {"output": ["ip"], "hostids": host_id})
+        target_ip = interfaces[0]["ip"] if interfaces else None
+
+        # Server-side logs for this host
+        server_logs = list(_HOST_LOGS.get(host_id, []))
+        if host_identifier != host_id:
+            server_logs += [l for l in _HOST_LOGS.get(host_identifier, []) if l not in server_logs]
+
+        agent_logs = []
+        is_alive = False
+        port = None
+        psk = None
+
+        if target_ip:
+            client = ProberClient(host_id=host_id, host_ip=target_ip)
+            try:
+                is_alive = client.is_alive()
+                port = client.config.port
+                psk = client.config.psk
+                if is_alive:
+                    agent_logs = client.fetch_logs(tail=tail)
+            finally:
+                client.close()
+
+        return {
+            "host_identifier": host_identifier,
+            "host_id": host_id,
+            "is_alive": is_alive,
+            "ip": target_ip,
+            "port": port,
+            "psk": psk,
+            "server_logs": server_logs,
+            "agent_logs": agent_logs,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Prober logs error:")
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.post("/execute-task/{task_id}")
-async def execute_task(task_id: int, req: DeployRequest):
-    # This assumes prober is already deployed.
-    # req.host_identifier is the host ID
+async def execute_task(task_id: int, req: ExecuteTaskRequest):
     db = SessionLocal()
     try:
         task = db.query(ProberTask).filter(ProberTask.id == task_id).first()
         if not task:
             raise HTTPException(status_code=404, detail="Task not found")
 
-        analyzer = main_app.get_or_create_analyzer()
+        analyzer = _get_analyzer()
         hosts = analyzer.list_hosts(search=req.host_identifier)
         if not hosts:
             raise HTTPException(status_code=404, detail="Host not found in Zabbix")
@@ -191,51 +208,57 @@ async def execute_task(task_id: int, req: DeployRequest):
         target_ip = interfaces[0]["ip"] if interfaces else None
 
         client = ProberClient(host_id=host_id, host_ip=target_ip)
-        if not client.is_alive():
-            raise HTTPException(status_code=400, detail="Prober is not alive on this host")
+        try:
+            if not client.is_alive():
+                log_host_event(host_id, f"Cannot execute task '{task.name}': Prober is not alive on {target_ip}:{client.config.port}")
+                raise HTTPException(status_code=400, detail="Prober is not alive on this host")
 
-        # Execute script
-        result = client.execute_script(task.content)
-        
-        # Check success
-        if result.get("exit_code") != 0:
-            return {"status": "error", "error": result.get("stderr")}
+            log_host_event(host_id, f"Executing task '{task.name}'...")
+            result = client.execute_script(task.content)
+            
+            if result.get("exit_code") != 0:
+                log_host_event(host_id, f"Task '{task.name}' failed with exit code {result.get('exit_code')}: {result.get('stderr')}")
+                return {"status": "error", "error": result.get("stderr")}
 
-        # Parsing and Mapping
-        parsed_data = {}
-        if task.parser_id:
-            try:
-                # Dynamic exec of parser code
-                local_env = {}
-                exec(task.parser.code, local_env)
-                if "parse" in local_env:
-                    parsed_data = local_env["parse"](result.get("stdout", ""))
-                else:
-                    logger.error("Parser code does not define a 'parse' function")
-            except Exception as e:
-                logger.error(f"Failed to parse output: {e}")
-                return {"status": "error", "error": f"Parser error: {e}"}
-        
-        # Mapping to HostPropertyValue
-        if task.map_to_properties and parsed_data:
-            for prop_name, value in parsed_data.items():
-                prop = db.query(HostProperty).filter_by(name=prop_name).first()
-                if prop:
-                    val_record = db.query(HostPropertyValue).filter_by(host_id=host_id, property_id=prop.id).first()
-                    if not val_record:
-                        val_record = HostPropertyValue(host_id=host_id, property_id=prop.id)
-                        db.add(val_record)
-                    val_record.value = value
-            db.commit()
+            log_host_event(host_id, f"Task '{task.name}' finished successfully (output size: {len(result.get('stdout', ''))} bytes)")
 
-        return {"status": "success", "parsed_data": parsed_data, "raw_stdout": result.get("stdout")}
+            # Parsing and Mapping
+            parsed_data = {}
+            if task.parser_id:
+                try:
+                    local_env = {}
+                    exec(task.parser.code, local_env)
+                    if "parse" in local_env:
+                        parsed_data = local_env["parse"](result.get("stdout", ""))
+                    else:
+                        logger.error("Parser code does not define a 'parse' function")
+                except Exception as e:
+                    logger.error(f"Failed to parse output: {e}")
+                    log_host_event(host_id, f"Parser error for task '{task.name}': {e}")
+                    return {"status": "error", "error": f"Parser error: {e}"}
+            
+            # Mapping to HostPropertyValue
+            if task.map_to_properties and parsed_data:
+                for prop_name, value in parsed_data.items():
+                    prop = db.query(HostProperty).filter_by(name=prop_name).first()
+                    if prop:
+                        val_record = db.query(HostPropertyValue).filter_by(host_id=host_id, property_id=prop.id).first()
+                        if not val_record:
+                            val_record = HostPropertyValue(host_id=host_id, property_id=prop.id)
+                            db.add(val_record)
+                        val_record.value = value
+                db.commit()
+
+            return {"status": "success", "parsed_data": parsed_data, "raw_stdout": result.get("stdout")}
+        finally:
+            client.close()
     finally:
         db.close()
 
 
 @router.get("/status/{host_identifier}")
 async def prober_status(host_identifier: str):
-    analyzer = main_app.get_or_create_analyzer()
+    analyzer = _get_analyzer()
     hosts = analyzer.list_hosts(search=host_identifier)
     if not hosts:
         raise HTTPException(status_code=404, detail="Host not found in Zabbix")
@@ -245,15 +268,24 @@ async def prober_status(host_identifier: str):
     interfaces = analyzer.client.call("hostinterface.get", {"output": ["ip"], "hostids": host_id})
     target_ip = interfaces[0]["ip"] if interfaces else None
 
-    client = ProberClient(host_id=host_id, host_ip=target_ip)
-    is_alive = client.is_alive()
-    port = client.config.port
-    psk = client.config.psk
-    ttl = client.config.ttl_seconds
-    client.close()
+    is_alive = False
+    port = None
+    psk = None
+    ttl = None
+
+    if target_ip:
+        client = ProberClient(host_id=host_id, host_ip=target_ip)
+        try:
+            is_alive = client.is_alive()
+            port = client.config.port
+            psk = client.config.psk
+            ttl = client.config.ttl_seconds
+        finally:
+            client.close()
 
     return {
         "host_identifier": host_identifier,
+        "host_id": host_id,
         "is_alive": is_alive,
         "ip": target_ip,
         "port": port,

@@ -33,6 +33,7 @@ def get_host_properties(host_id: str, db: Session = Depends(get_db)):
                     "display_name": p.display_name,
                     "description": p.description,
                     "data_type": p.data_type,
+                    "display_mode": getattr(p, "display_mode", "auto") or "auto",
                     "value": val
                 })
         
@@ -41,6 +42,7 @@ def get_host_properties(host_id: str, db: Session = Depends(get_db)):
             "name": cat.name,
             "display_name": cat.display_name,
             "order": cat.order,
+            "icon": getattr(cat, "icon", "fa-folder") or "fa-folder",
             "properties": cat_props
         })
         

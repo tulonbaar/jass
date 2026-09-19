@@ -64,3 +64,35 @@ class ProberClient:
             logger.error(f"Failed to decrypt/parse prober response: {e}")
             raise Exception(f"Failed to decrypt/parse prober response: {e}")
 
+    def fetch_logs(self, tail: int = 100) -> list:
+        url = f"http://{self.host_ip}:{self.config.port}/logs"
+        encrypted_req = encrypt_payload({"tail": tail}, self.config.psk)
+        try:
+            resp = requests.post(
+                url,
+                data=encrypted_req,
+                headers={'Content-Type': 'application/octet-stream'},
+                timeout=5
+            )
+            resp.raise_for_status()
+            data = decrypt_payload(resp.content, self.config.psk)
+            return data.get("logs", [])
+        except Exception as e:
+            logger.debug(f"Failed to fetch logs from prober: {e}")
+            return []
+
+    def terminate(self) -> bool:
+        url = f"http://{self.host_ip}:{self.config.port}/terminate"
+        encrypted_req = encrypt_payload({"action": "terminate"}, self.config.psk)
+        try:
+            resp = requests.post(
+                url,
+                data=encrypted_req,
+                headers={'Content-Type': 'application/octet-stream'},
+                timeout=5
+            )
+            return resp.status_code == 200
+        except Exception as e:
+            logger.error(f"Failed to terminate prober: {e}")
+            return False
+

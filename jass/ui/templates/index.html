@@ -424,8 +424,7 @@
                                 <span>Recent Logins (7 days)</span>
                             </h3>
                             <div class="flex items-center gap-2">
-                                <button onclick="triggerSpecificProbe('recent_logins')" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded">Standard Zabbix Probe</button>
-                                <button onclick="triggerProberDeploy('recent_logins')" class="text-[10px] bg-brand-600 hover:bg-brand-500 text-white px-3 py-1 rounded font-bold shadow-lg shadow-brand-500/20">Launch via Prober (Async)</button>
+                                <button onclick="triggerSpecificProbe('recent_logins')" class="text-[10px] bg-brand-600 hover:bg-brand-500 text-white px-3 py-1 rounded font-bold shadow-lg shadow-brand-500/20">Fetch Recent Logins</button>
                             </div>
                         </div>
                         <div id="logins-container" class="text-xs text-slate-400">
@@ -477,13 +476,16 @@
                             <div>
                                 <h3 class="text-base font-bold text-white flex items-center space-x-2">
                                     <i class="fa-solid fa-satellite-dish text-emerald-400"></i>
-                                    <span>Prober Agent Setup & Live Status</span>
+                                    <span>Prober Ephemeral Agent</span>
                                 </h3>
-                                <p class="text-xs text-slate-400 mt-0.5">Configure, launch, and monitor the ephemeral diagnostic agent on this host.</p>
+                                <p class="text-xs text-slate-400 mt-0.5">Configure, launch, and monitor the standalone diagnostic agent on the selected host.</p>
                             </div>
-                            <div class="flex items-center gap-2">
+                            <div class="flex items-center gap-2 flex-wrap">
                                 <button onclick="checkProberStatusManual()" class="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 border border-darkborder rounded-lg text-slate-200 flex items-center gap-1.5 transition">
                                     <i class="fa-solid fa-rotate text-slate-400"></i> Check Ping
+                                </button>
+                                <button onclick="stopAndTerminateProber()" id="btn-stop-prober" class="px-3 py-1.5 text-xs bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 rounded-lg text-red-400 flex items-center gap-1.5 transition font-semibold">
+                                    <i class="fa-solid fa-power-off"></i> Stop & Terminate
                                 </button>
                                 <span id="prober-alive-badge" class="px-3 py-1 text-xs font-bold rounded-lg bg-slate-800 text-slate-400 border border-darkborder">
                                     Unknown Status
@@ -496,26 +498,6 @@
                             <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-2">
                                 <i class="fa-solid fa-sliders"></i> Prober Configuration
                             </h4>
-
-                            <div>
-                                <label class="block text-slate-300 font-semibold mb-2 text-xs">Launch Mode:</label>
-                                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                                    <label class="flex flex-col p-3 rounded-xl border border-darkborder bg-slate-900 cursor-pointer hover:border-brand-500 transition has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500/10">
-                                        <div class="flex items-center space-x-2">
-                                            <input type="radio" name="prober-tab-mode" value="manual" checked class="text-brand-500 focus:ring-0">
-                                            <span class="font-bold text-slate-100 text-xs">Manual Start (Recommended)</span>
-                                        </div>
-                                        <span class="text-[11px] text-slate-400 mt-1">Configure parameters here, then run the command directly on the destination server.</span>
-                                    </label>
-                                    <label class="flex flex-col p-3 rounded-xl border border-darkborder bg-slate-900 cursor-pointer hover:border-brand-500 transition has-[:checked]:border-brand-500 has-[:checked]:bg-brand-500/10">
-                                        <div class="flex items-center space-x-2">
-                                            <input type="radio" name="prober-tab-mode" value="auto" class="text-brand-500 focus:ring-0">
-                                            <span class="font-bold text-slate-100 text-xs">Automatic (Zabbix Dropper)</span>
-                                        </div>
-                                        <span class="text-[11px] text-slate-400 mt-1">Deploy and execute dropper script via Zabbix agent on target machine.</span>
-                                    </label>
-                                </div>
-                            </div>
 
                             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 <div>
@@ -539,13 +521,19 @@
                                 <span class="text-[10px] text-slate-500 mt-1 block">Used for AES-GCM encrypted communication between JASS and prober.exe.</span>
                             </div>
 
-                            <div class="flex items-center justify-between pt-2 border-t border-darkborder/40">
-                                <a href="/static/prober.exe" download="prober.exe" class="text-xs text-brand-400 hover:underline flex items-center gap-1.5">
-                                    <i class="fa-solid fa-download"></i> Direct Download prober.exe
-                                </a>
+                            <div class="flex flex-col sm:flex-row items-center justify-between pt-2 border-t border-darkborder/40 gap-3">
+                                <div class="flex items-center gap-3">
+                                    <a href="/static/prober.exe" download="prober.exe" class="text-xs text-brand-400 hover:underline flex items-center gap-1.5 font-medium">
+                                        <i class="fa-solid fa-download"></i> Download prober.exe (x64)
+                                    </a>
+                                    <span class="text-slate-600">|</span>
+                                    <a href="/static/prober-x86.exe" download="prober-x86.exe" class="text-xs text-slate-400 hover:text-slate-200 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-download"></i> prober-x86.exe (32-bit)
+                                    </a>
+                                </div>
                                 <button onclick="submitProberFromTab()" id="btn-start-prober-tab" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl flex items-center space-x-2 shadow-lg shadow-emerald-600/30 transition">
                                     <i class="fa-solid fa-play"></i>
-                                    <span id="btn-start-prober-tab-text">Apply & Launch Prober</span>
+                                    <span id="btn-start-prober-tab-text">Save & Generate Launch Command</span>
                                 </button>
                             </div>
                         </div>
@@ -566,7 +554,7 @@
                                 </button>
                             </div>
                             <div class="pt-2 border-t border-darkborder/50">
-                                <span class="text-[11px] text-slate-400 block mb-1.5">Or one-liner to download from JASS and run directly (PowerShell):</span>
+                                <span class="text-[11px] text-slate-400 block mb-1.5">Or one-liner to download from JASS and run directly in PowerShell:</span>
                                 <div class="relative">
                                     <pre id="prober-oneliner-cmd" class="bg-slate-950 font-mono text-[11px] text-sky-300 p-3 pr-20 rounded-lg border border-darkborder overflow-x-auto select-all whitespace-pre-wrap"></pre>
                                     <button onclick="copyToClipboard('prober-oneliner-cmd')" class="absolute top-2 right-2 px-3 py-1 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded border border-darkborder transition flex items-center gap-1.5">
@@ -576,16 +564,26 @@
                             </div>
                             <div class="text-[11px] text-slate-400 flex items-center gap-1.5 italic pt-1">
                                 <i class="fa-solid fa-circle-info text-emerald-400"></i>
-                                JASS is actively polling the target IP. Once started, the badge above will turn <strong class="text-emerald-300 not-italic">Online</strong> and you can execute Tasks.
+                                JASS is actively monitoring this host. Once executed, the badge above turns <strong class="text-emerald-300 not-italic">Online</strong> in real time.
                             </div>
                         </div>
 
-                        <!-- Activity & Logs -->
+                        <!-- Activity & Live Logs -->
                         <div class="space-y-2">
-                            <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wide flex items-center gap-1.5">
-                                <i class="fa-solid fa-file-lines text-slate-500"></i> Activity & Deployment Logs
-                            </h4>
-                            <div class="bg-slate-950 font-mono text-xs text-emerald-400 p-4 rounded-xl border border-darkborder overflow-x-auto min-h-[120px] whitespace-pre-wrap" id="prober-deploy-log">
+                            <div class="flex items-center justify-between">
+                                <h4 class="text-xs font-semibold text-slate-400 uppercase tracking-wide flex items-center gap-2">
+                                    <i class="fa-solid fa-file-lines text-slate-500"></i> Live Activity & Agent Logs
+                                </h4>
+                                <div class="flex items-center gap-3">
+                                    <span class="text-[11px] text-emerald-400 font-mono flex items-center gap-1.5">
+                                        <span class="w-2 h-2 rounded-full bg-emerald-400 animate-ping inline-block"></span> LIVE
+                                    </span>
+                                    <button onclick="clearProberLogView()" class="text-xs text-slate-400 hover:text-slate-200 transition">
+                                        <i class="fa-solid fa-eraser mr-1"></i> Clear
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="bg-slate-950 font-mono text-xs text-emerald-400 p-4 rounded-xl border border-darkborder overflow-x-auto max-h-[360px] min-h-[140px] whitespace-pre-wrap" id="prober-deploy-log">
 Waiting for configuration or start...
                             </div>
                         </div>
@@ -872,11 +870,15 @@ Waiting for configuration or start...
             if (proberStatusInterval) {
                 clearInterval(proberStatusInterval);
                 proberStatusInterval = null;
-                const badgeEl = document.getElementById('prober-alive-badge');
-                if (badgeEl) {
-                    badgeEl.className = 'px-2.5 py-1 text-[10px] font-bold rounded-lg bg-slate-800 text-slate-400 border border-darkborder';
-                    badgeEl.innerText = 'Unknown Status';
-                }
+            }
+            activeProberHost = hostIdentifier;
+            
+            const logEl = document.getElementById('prober-deploy-log');
+            if (logEl) logEl.innerText = `[${new Date().toLocaleTimeString()}] Selected host '${hostIdentifier}'. Fetching prober logs...\n`;
+            const badgeEl = document.getElementById('prober-alive-badge');
+            if (badgeEl) {
+                badgeEl.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-slate-800 text-slate-400 border border-darkborder';
+                badgeEl.innerText = 'Checking Status...';
             }
 
             showToast(`Sniffing host '${hostIdentifier}'...`);
@@ -903,7 +905,14 @@ Waiting for configuration or start...
                 currentPayload = data.payload;
                 renderHostDashboard(currentPayload, data.llm_prompt);
                 loadDynamicProperties(currentPayload.host_id);
-                pollProberStatus(currentPayload.host_name);
+                
+                const proberTab = document.getElementById('tab-prober');
+                if (proberTab && !proberTab.classList.contains('hidden')) {
+                    startProberPolling(currentPayload.host_name, 2000);
+                } else {
+                    pollProberLogs(currentPayload.host_name);
+                }
+
                 showToast(`Completed analysis for ${currentPayload.host_name}.`);
             } catch (e) {
                 showToast(`Error: ${e.message}`, true);
@@ -917,6 +926,7 @@ Waiting for configuration or start...
 
         let proberStatusInterval = null;
         let lastProberState = null;
+        let activeProberHost = null;
 
         function generateProberTabPsk() {
             const arr = new Uint8Array(16);
@@ -926,13 +936,17 @@ Waiting for configuration or start...
             if (pskInput) pskInput.value = hex;
         }
 
+        function clearProberLogView() {
+            const logEl = document.getElementById('prober-deploy-log');
+            if (logEl) logEl.innerText = 'Logs cleared.\n';
+        }
+
         async function submitProberFromTab() {
             if (!currentPayload) {
                 showToast("Please select a host first", true);
                 return;
             }
 
-            const mode = document.querySelector('input[name="prober-tab-mode"]:checked')?.value || 'manual';
             const port = parseInt(document.getElementById('prober-tab-port').value) || 8443;
             const ttl = parseInt(document.getElementById('prober-tab-ttl').value) || 3600;
             let psk = document.getElementById('prober-tab-psk').value.trim();
@@ -944,167 +958,177 @@ Waiting for configuration or start...
             const logEl = document.getElementById('prober-deploy-log');
             const badgeEl = document.getElementById('prober-alive-badge');
             const manualCard = document.getElementById('prober-manual-card');
-            const btn = document.getElementById('btn-start-prober-tab');
 
-            if (mode === 'manual') {
-                badgeEl.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse';
-                badgeEl.innerHTML = '<i class="fa-solid fa-hourglass-half mr-1"></i> Waiting for Server...';
-                logEl.innerText = `[JASS] Preparing manual prober configuration for ${currentPayload.host_name} (Port: ${port}, TTL: ${ttl}s)...\n`;
+            badgeEl.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 animate-pulse';
+            badgeEl.innerHTML = '<i class="fa-solid fa-hourglass-half mr-1"></i> Waiting for Server...';
+            logEl.innerText = `[JASS] Preparing manual prober configuration for ${currentPayload.host_name} (Port: ${port}, TTL: ${ttl}s)...\n`;
 
-                try {
-                    const res = await fetch('/api/prober/manual-start', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            host_identifier: currentPayload.host_name,
-                            port: port,
-                            ttl: ttl,
-                            psk: psk
-                        })
-                    });
+            try {
+                const res = await fetch('/api/prober/manual-start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        host_identifier: currentPayload.host_name,
+                        port: port,
+                        ttl: ttl,
+                        psk: psk
+                    })
+                });
 
-                    if (!res.ok) {
-                        let errorMsg = 'Unknown error';
-                        try {
-                            const err = await res.json();
-                            errorMsg = err.detail || errorMsg;
-                        } catch (_) {
-                            errorMsg = (await res.text()) || res.statusText || 'Server Error';
-                        }
-                        logEl.innerText += `[JASS] Error preparing manual start: ${errorMsg}\n`;
-                        badgeEl.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-red-500/20 text-red-400 border border-red-500/30';
-                        badgeEl.innerText = 'Error';
-                        showToast(`Manual start error: ${errorMsg}`, true);
-                        return;
+                if (!res.ok) {
+                    let errorMsg = 'Unknown error';
+                    try {
+                        const err = await res.json();
+                        errorMsg = err.detail || errorMsg;
+                    } catch (_) {
+                        errorMsg = (await res.text()) || res.statusText || 'Server Error';
                     }
-
-                    const data = await res.json();
-                    document.getElementById('prober-manual-cmd').innerText = data.command;
-                    document.getElementById('prober-oneliner-cmd').innerText = data.oneliner;
-                    manualCard.classList.remove('hidden');
-
-                    logEl.innerText += `[JASS] Configuration saved successfully.\n` +
-                        `[JASS] Target Server IP: ${data.ip}\n` +
-                        `[JASS] Listening Port: ${data.port}\n` +
-                        `[JASS] PSK Key: ${data.psk}\n\n` +
-                        `>>> INSTRUCTIONS:\n` +
-                        `1. Log into server ${currentPayload.host_name} (${data.ip})\n` +
-                        `2. Run the command shown in the green card above in PowerShell\n` +
-                        `3. JASS is now polling http://${data.ip}:${data.port}/ping every 3 seconds\n` +
-                        `4. As soon as prober.exe starts, status will automatically switch to ONLINE.\n`;
-
-                    showToast(`Parameters saved! Run command on target server.`);
-                    lastProberState = false;
-                    startProberPolling(currentPayload.host_name, 3000);
-                } catch (e) {
-                    logEl.innerText += `[JASS] Error: ${e.message}\n`;
+                    logEl.innerText += `[JASS] Error preparing manual start: ${errorMsg}\n`;
                     badgeEl.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-red-500/20 text-red-400 border border-red-500/30';
                     badgeEl.innerText = 'Error';
-                    showToast(`Error: ${e.message}`, true);
+                    showToast(`Manual start error: ${errorMsg}`, true);
+                    return;
                 }
-            } else {
-                // Automatic mode (Zabbix dropper)
-                manualCard.classList.add('hidden');
-                badgeEl.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-yellow-500/20 text-yellow-400 border border-yellow-500/30 animate-pulse';
-                badgeEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i> Deploying via Zabbix...';
-                logEl.innerText = `[JASS] Deploying ephemeral Prober via Zabbix agent to ${currentPayload.host_name} on port ${port}...\n`;
 
-                showToast(`Deploying ephemeral Prober to ${currentPayload.host_name}...`);
-                try {
-                    const res = await fetch('/api/prober/deploy', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            host_identifier: currentPayload.host_name,
-                            script_content: '',
-                            port: port,
-                            ttl: ttl,
-                            psk: psk
-                        })
-                    });
+                const data = await res.json();
+                document.getElementById('prober-manual-cmd').innerText = data.command;
+                document.getElementById('prober-oneliner-cmd').innerText = data.oneliner;
+                manualCard.classList.remove('hidden');
 
-                    if (!res.ok) {
-                        let errorMsg = 'Unknown error';
-                        try {
-                            const err = await res.json();
-                            errorMsg = err.detail || errorMsg;
-                        } catch (_) {
-                            errorMsg = (await res.text()) || res.statusText || 'Server Error';
-                        }
-                        logEl.innerText += `\nDeployment failed:\n${errorMsg}\n`;
+                logEl.innerText += `[JASS] Configuration saved successfully.\n` +
+                    `[JASS] Target Server IP: ${data.ip}\n` +
+                    `[JASS] Listening Port: ${data.port}\n` +
+                    `[JASS] PSK Key: ${data.psk}\n\n` +
+                    `>>> INSTRUCTIONS:\n` +
+                    `1. Log into server ${currentPayload.host_name} (${data.ip})\n` +
+                    `2. Run the command shown above in PowerShell\n` +
+                    `3. JASS is now monitoring http://${data.ip}:${data.port}/ping every 2 seconds\n` +
+                    `4. As soon as prober.exe runs, status switches to ONLINE and logs stream in real time.\n`;
+
+                showToast(`Configuration saved! Run command on target server.`);
+                lastProberState = false;
+                startProberPolling(currentPayload.host_name, 2000);
+            } catch (e) {
+                logEl.innerText += `[JASS] Error: ${e.message}\n`;
+                badgeEl.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-red-500/20 text-red-400 border border-red-500/30';
+                badgeEl.innerText = 'Error';
+                showToast(`Error: ${e.message}`, true);
+            }
+        }
+
+        async function stopAndTerminateProber() {
+            if (!currentPayload || !currentPayload.host_name) {
+                showToast("Select a host first", true);
+                return;
+            }
+            const hostName = currentPayload.host_name;
+            if (!confirm(`Are you sure you want to stop and terminate prober.exe on ${hostName}?\n\nThis will remove the Windows firewall rule, self-destruct/delete prober.exe from the server, and terminate the process.`)) {
+                return;
+            }
+            const logEl = document.getElementById('prober-deploy-log');
+            if (logEl) logEl.innerText += `\n[${new Date().toLocaleTimeString()}] Sending TERMINATE command to Prober on ${hostName}...\n`;
+            showToast(`Terminating Prober on ${hostName}...`);
+            try {
+                const res = await fetch(`/api/prober/stop/${encodeURIComponent(hostName)}`, { method: 'POST' });
+                const data = await res.json();
+                if (res.ok) {
+                    showToast(`Prober on ${hostName} terminated successfully.`);
+                    if (logEl) logEl.innerText += `[${new Date().toLocaleTimeString()}] Prober terminated successfully: ${data.message || 'Self-destruct scheduled'}\n`;
+                    const badgeEl = document.getElementById('prober-alive-badge');
+                    if (badgeEl) {
                         badgeEl.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-red-500/20 text-red-400 border border-red-500/30';
-                        badgeEl.innerText = 'Deployment Failed';
-                        showToast(`Prober deploy error: ${errorMsg}`, true);
-                        return;
+                        badgeEl.innerHTML = '<i class="fa-solid fa-circle-xmark mr-1"></i> Terminated / Offline';
                     }
-
-                    const data = await res.json();
-                    logEl.innerText += `\n--- Zabbix Dropper Output ---\n${data.dropper_output}\n-----------------------------\n`;
-                    logEl.innerText += `\n[JASS] Prober agent should now be running on ${data.ip}:${data.port}. Polling status...`;
-
-                    showToast(`Prober deployed to ${data.ip}:${data.port}.`);
-                    lastProberState = false;
-                    startProberPolling(currentPayload.host_name, 5000);
-                } catch (e) {
-                    logEl.innerText += `\nError: ${e.message}`;
-                    badgeEl.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-red-500/20 text-red-400 border border-red-500/30';
-                    badgeEl.innerText = 'Error';
-                    showToast(`Error: ${e.message}`, true);
+                    pollProberLogs(hostName);
+                } else {
+                    showToast(`Error: ${data.detail || data.error || 'Failed to stop prober'}`, true);
+                    if (logEl) logEl.innerText += `[${new Date().toLocaleTimeString()}] Termination error: ${data.detail || data.error}\n`;
                 }
+            } catch (e) {
+                showToast(`Error: ${e.message}`, true);
+                if (logEl) logEl.innerText += `[${new Date().toLocaleTimeString()}] Termination exception: ${e.message}\n`;
             }
         }
 
         function checkProberStatusManual() {
             if (currentPayload) {
-                pollProberStatus(currentPayload.host_name, true);
+                pollProberLogs(currentPayload.host_name, true);
             } else {
                 showToast("Select a host first", true);
             }
         }
 
-        function startProberPolling(hostIdentifier, intervalMs = 4000) {
+        function startProberPolling(hostIdentifier, intervalMs = 2000) {
             if (proberStatusInterval) clearInterval(proberStatusInterval);
-            pollProberStatus(hostIdentifier);
-            proberStatusInterval = setInterval(() => pollProberStatus(hostIdentifier), intervalMs);
+            activeProberHost = hostIdentifier;
+            pollProberLogs(hostIdentifier);
+            proberStatusInterval = setInterval(() => {
+                if (activeProberHost === hostIdentifier) {
+                    pollProberLogs(hostIdentifier);
+                }
+            }, intervalMs);
         }
 
-        async function pollProberStatus(hostIdentifier, userTriggered = false) {
+        async function pollProberLogs(hostIdentifier, userTriggered = false) {
             const badgeEl = document.getElementById('prober-alive-badge');
+            const logEl = document.getElementById('prober-deploy-log');
             if (!badgeEl) return;
             try {
-                const res = await fetch(`/api/prober/status/${hostIdentifier}`);
-                if (res.ok) {
-                    const data = await res.json();
-                    if (data.port) {
-                        const portInput = document.getElementById('prober-tab-port');
-                        if (portInput && document.activeElement !== portInput) portInput.value = data.port;
-                    }
-                    if (data.psk) {
-                        const pskInput = document.getElementById('prober-tab-psk');
-                        if (pskInput && document.activeElement !== pskInput) pskInput.value = data.psk;
-                    }
-                    if (data.ttl) {
-                        const ttlInput = document.getElementById('prober-tab-ttl');
-                        if (ttlInput && document.activeElement !== ttlInput) ttlInput.value = data.ttl;
-                    }
-                    if (data.is_alive) {
-                        badgeEl.className = 'px-2.5 py-1 text-[10px] font-bold rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
-                        badgeEl.innerHTML = '<i class="fa-solid fa-circle-check mr-1"></i> Online';
-                        if (lastProberState === false) {
-                            showToast(`Prober on ${hostIdentifier} is now ONLINE! Tasks unlocked.`, false);
-                            const logEl = document.getElementById('prober-deploy-log');
-                            if (logEl) logEl.innerText += `\n[${new Date().toLocaleTimeString()}] Prober connected successfully! Agent responded to PING.\n`;
-                        }
-                        lastProberState = true;
-                    } else {
-                        badgeEl.className = 'px-2.5 py-1 text-[10px] font-bold rounded-lg bg-red-500/20 text-red-400 border border-red-500/30';
-                        badgeEl.innerHTML = '<i class="fa-solid fa-circle-xmark mr-1"></i> Offline / Unreachable';
-                        lastProberState = false;
-                        if (userTriggered) showToast(`Prober on ${hostIdentifier} is unreachable.`, true);
-                    }
-                } else {
+                const res = await fetch(`/api/prober/logs/${encodeURIComponent(hostIdentifier)}?tail=100`);
+                if (!res.ok) {
                     badgeEl.className = 'px-2.5 py-1 text-[10px] font-bold rounded-lg bg-slate-800 text-slate-400 border border-darkborder';
                     badgeEl.innerText = 'Unknown';
+                    return;
+                }
+                const data = await res.json();
+                if (currentPayload && currentPayload.host_name !== hostIdentifier) return;
+
+                if (data.port) {
+                    const portInput = document.getElementById('prober-tab-port');
+                    if (portInput && document.activeElement !== portInput) portInput.value = data.port;
+                }
+                if (data.psk) {
+                    const pskInput = document.getElementById('prober-tab-psk');
+                    if (pskInput && document.activeElement !== pskInput) pskInput.value = data.psk;
+                }
+
+                if (data.is_alive) {
+                    badgeEl.className = 'px-2.5 py-1 text-[10px] font-bold rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+                    badgeEl.innerHTML = '<i class="fa-solid fa-circle-check mr-1"></i> Online';
+                    if (lastProberState === false) {
+                        showToast(`Prober on ${hostIdentifier} is now ONLINE! Tasks unlocked.`, false);
+                    }
+                    lastProberState = true;
+                } else {
+                    badgeEl.className = 'px-2.5 py-1 text-[10px] font-bold rounded-lg bg-red-500/20 text-red-400 border border-red-500/30';
+                    badgeEl.innerHTML = '<i class="fa-solid fa-circle-xmark mr-1"></i> Offline / Unreachable';
+                    lastProberState = false;
+                    if (userTriggered) showToast(`Prober on ${hostIdentifier} is unreachable.`, true);
+                }
+
+                // Build composite real-time log
+                let logLines = [];
+                if (data.server_logs && data.server_logs.length > 0) {
+                    logLines.push("=== SERVER ACTIVITY LOGS ===");
+                    logLines.push(...data.server_logs);
+                    logLines.push("");
+                }
+                if (data.agent_logs && data.agent_logs.length > 0) {
+                    logLines.push("=== REMOTE PROBER LOGS (prober-log.log) ===");
+                    logLines.push(...data.agent_logs);
+                }
+                if (logLines.length === 0) {
+                    logLines.push(`[${new Date().toLocaleTimeString()}] No activity recorded yet for ${hostIdentifier}.`);
+                    logLines.push(`Start prober on the host to begin telemetry extraction.`);
+                }
+
+                const newText = logLines.join("\n");
+                if (logEl && logEl.innerText !== newText) {
+                    const shouldAutoScroll = logEl.scrollTop + logEl.clientHeight >= logEl.scrollHeight - 50;
+                    logEl.innerText = newText;
+                    if (shouldAutoScroll) {
+                        logEl.scrollTop = logEl.scrollHeight;
+                    }
                 }
             } catch (e) {
                 // ignore
@@ -1195,6 +1219,320 @@ Waiting for configuration or start...
             }
         }
 
+        window._propStore = window._propStore || {};
+
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
+        function togglePropertyView(uid) {
+            const visualEl = document.getElementById(`visual-${uid}`);
+            const jsonEl = document.getElementById(`json-${uid}`);
+            const btn = document.getElementById(`btn-toggle-${uid}`);
+            if (!visualEl || !jsonEl) return;
+            if (visualEl.classList.contains('hidden')) {
+                visualEl.classList.remove('hidden');
+                jsonEl.classList.add('hidden');
+                if (btn) btn.innerHTML = '<i class="fa-solid fa-code mr-1"></i> JSON';
+            } else {
+                visualEl.classList.add('hidden');
+                jsonEl.classList.remove('hidden');
+                if (btn) btn.innerHTML = '<i class="fa-solid fa-table mr-1"></i> Visual';
+            }
+        }
+
+        function copyPropertyJson(uid) {
+            const data = window._propStore ? window._propStore[uid] : null;
+            const text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+            navigator.clipboard.writeText(text || '').then(() => {
+                showToast('Property JSON copied to clipboard!');
+            }).catch(() => {
+                showToast('Failed to copy to clipboard', true);
+            });
+        }
+
+        function filterTable(input, tableId) {
+            const q = input.value.toLowerCase();
+            const table = document.getElementById(tableId);
+            if (!table) return;
+            const rows = table.querySelectorAll('tbody tr');
+            let visible = 0;
+            rows.forEach(r => {
+                const match = r.innerText.toLowerCase().includes(q);
+                r.style.display = match ? '' : 'none';
+                if (match) visible++;
+            });
+            const counter = document.getElementById(`${tableId}-counter`);
+            if (counter) counter.innerText = `${visible} / ${rows.length} rows`;
+        }
+
+        function sortTable(tableId, colIndex) {
+            const table = document.getElementById(tableId);
+            if (!table) return;
+            const tbody = table.querySelector('tbody');
+            const rows = Array.from(tbody.querySelectorAll('tr'));
+            const ths = table.querySelectorAll('th');
+            const th = ths[colIndex];
+            if (!th) return;
+
+            const currentSort = th.getAttribute('data-sort');
+            const isAsc = currentSort !== 'asc';
+
+            ths.forEach(h => {
+                h.removeAttribute('data-sort');
+                const icon = h.querySelector('.sort-icon');
+                if (icon) icon.className = 'sort-icon fa-solid fa-sort ml-1 text-slate-600';
+            });
+
+            th.setAttribute('data-sort', isAsc ? 'asc' : 'desc');
+            const icon = th.querySelector('.sort-icon');
+            if (icon) icon.className = `sort-icon fa-solid fa-sort-${isAsc ? 'up' : 'down'} ml-1 text-brand-400`;
+
+            rows.sort((a, b) => {
+                const valA = a.children[colIndex]?.innerText.trim() || '';
+                const valB = b.children[colIndex]?.innerText.trim() || '';
+                const numA = parseFloat(valA.replace(/[^0-9.-]/g, ''));
+                const numB = parseFloat(valB.replace(/[^0-9.-]/g, ''));
+                if (!isNaN(numA) && !isNaN(numB) && !isNaN(valA) && !isNaN(valB)) {
+                    return isAsc ? numA - numB : numB - numA;
+                }
+                return isAsc ? valA.localeCompare(valB) : valB.localeCompare(valA);
+            });
+
+            rows.forEach(r => tbody.appendChild(r));
+        }
+
+        function formatColumnHeader(key) {
+            const map = {
+                'address': 'Local Address',
+                'port': 'Port',
+                'owning_pid': 'PID',
+                'process': 'Process Name',
+                'name': 'Name / Application',
+                'version': 'Version',
+                'publisher': 'Publisher',
+                'install_date': 'Install Date',
+                'install_location': 'Install Location',
+                'time': 'Timestamp',
+                'log_name': 'Log Name',
+                'event_id': 'Event ID',
+                'level': 'Severity',
+                'source': 'Provider / Source',
+                'message': 'Message',
+                'drive': 'Drive',
+                'folder': 'Folder Name',
+                'is_standard': 'Classification',
+                'subfolders': 'Subfolders',
+                'user': 'Username',
+                'count': 'Login Count',
+                'device_id': 'Device ID',
+                'size_gb': 'Size (GB)',
+                'ip_address': 'IP Address',
+                'mac_address': 'MAC Address',
+                'adapter_type': 'Adapter Type'
+            };
+            if (map[key]) return map[key];
+            return key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        }
+
+        function formatTableCell(key, val) {
+            if (val === null || val === undefined || val === '') {
+                return '<span class="text-slate-600">-</span>';
+            }
+            const s = String(val);
+            if (key === 'port') {
+                return `<span class="px-2 py-0.5 rounded font-mono font-bold text-xs bg-sky-500/10 text-sky-400 border border-sky-500/20">${escapeHtml(s)}</span>`;
+            }
+            if (key === 'address' || key === 'ip_address' || key === 'mac_address') {
+                return `<span class="font-mono text-slate-300 text-xs">${escapeHtml(s)}</span>`;
+            }
+            if (key === 'owning_pid' || key === 'event_id') {
+                return `<span class="px-1.5 py-0.5 rounded font-mono text-[11px] bg-slate-800 text-slate-400 border border-darkborder">${escapeHtml(s)}</span>`;
+            }
+            if (key === 'process') {
+                return `<span class="font-semibold text-slate-100 text-xs">${escapeHtml(s)}</span>`;
+            }
+            if (key === 'level') {
+                const lower = s.toLowerCase();
+                if (lower.includes('err') || lower.includes('crit')) {
+                    return `<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-red-500/20 text-red-400 border border-red-500/30">Error</span>`;
+                } else if (lower.includes('warn')) {
+                    return `<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">Warning</span>`;
+                }
+                return `<span class="px-2 py-0.5 rounded text-[11px] font-semibold bg-slate-800 text-slate-300 border border-darkborder">${escapeHtml(s)}</span>`;
+            }
+            if (key === 'is_standard') {
+                return val ? `<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"><i class="fa-solid fa-check mr-1"></i>Standard</span>`
+                           : `<span class="px-2 py-0.5 rounded text-[11px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Custom</span>`;
+            }
+            if (key === 'count') {
+                return `<span class="px-2 py-0.5 rounded font-mono font-bold text-xs bg-brand-500/20 text-brand-400 border border-brand-500/30">${escapeHtml(s)}</span>`;
+            }
+            if (key === 'message') {
+                return `<span class="text-xs text-slate-300 max-w-md block truncate hover:whitespace-normal" title="${escapeHtml(s)}">${escapeHtml(s)}</span>`;
+            }
+            return `<span class="text-xs text-slate-300">${escapeHtml(s)}</span>`;
+        }
+
+        function renderPropertyCard(prop, hostId) {
+            const uid = `prop-${hostId}-${prop.name}`;
+            const val = prop.value;
+            window._propStore[uid] = val;
+
+            const hasValue = (val !== null && val !== undefined);
+            const displayMode = prop.display_mode || 'auto';
+
+            let visualHtml = '';
+
+            if (!hasValue) {
+                visualHtml = `
+                    <div class="text-xs text-slate-500 italic p-3.5 bg-slate-950/40 rounded-xl border border-darkborder/40 flex items-center gap-2">
+                        <i class="fa-solid fa-clock-rotate-left text-slate-600"></i>
+                        <span>No telemetry collected yet for this property. Run the corresponding Prober task to populate.</span>
+                    </div>
+                `;
+            } else if (displayMode === 'json') {
+                visualHtml = `<pre class="text-xs bg-slate-950 p-3 rounded-xl border border-darkborder font-mono text-emerald-400 overflow-x-auto select-all whitespace-pre-wrap">${escapeHtml(JSON.stringify(val, null, 2))}</pre>`;
+            } else if (Array.isArray(val)) {
+                if (val.length === 0) {
+                    visualHtml = `<div class="text-xs text-slate-500 italic p-3.5 bg-slate-950/40 rounded-xl border border-darkborder/40">No records found (empty collection).</div>`;
+                } else if (typeof val[0] === 'object' && val[0] !== null) {
+                    // Array of Objects -> Interactive Table!
+                    const tableId = `tbl-${uid}`;
+                    // Collect all unique keys
+                    const keysSet = new Set();
+                    val.forEach(item => {
+                        if (typeof item === 'object' && item !== null) {
+                            Object.keys(item).forEach(k => keysSet.add(k));
+                        }
+                    });
+                    const cols = Array.from(keysSet);
+
+                    let theadCols = cols.map((col, idx) => `
+                        <th onclick="sortTable('${tableId}', ${idx})" class="p-2.5 font-semibold cursor-pointer hover:text-white transition whitespace-nowrap">
+                            ${formatColumnHeader(col)} <i class="sort-icon fa-solid fa-sort ml-1 text-slate-600"></i>
+                        </th>
+                    `).join('');
+
+                    let tbodyRows = val.map(row => {
+                        let cells = cols.map(col => `<td class="p-2.5 border-b border-darkborder/40">${formatTableCell(col, row[col])}</td>`).join('');
+                        return `<tr class="hover:bg-slate-900/60 transition">${cells}</tr>`;
+                    }).join('');
+
+                    visualHtml = `
+                        <div class="space-y-2">
+                            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                                <div class="relative flex-1 max-w-xs">
+                                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-xs text-slate-500"></i>
+                                    <input type="text" placeholder="Filter rows..." oninput="filterTable(this, '${tableId}')" class="w-full bg-slate-950 border border-darkborder rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
+                                </div>
+                                <span id="${tableId}-counter" class="text-xs font-mono text-slate-400 bg-slate-950 px-2.5 py-1 rounded-lg border border-darkborder w-fit">
+                                    ${val.length} rows
+                                </span>
+                            </div>
+                            <div class="overflow-x-auto max-h-[380px] border border-darkborder/70 rounded-xl">
+                                <table id="${tableId}" class="w-full text-left border-collapse text-xs">
+                                    <thead class="bg-slate-900/90 text-slate-400 sticky top-0 border-b border-darkborder uppercase text-[10px] tracking-wider select-none backdrop-blur">
+                                        <tr>${theadCols}</tr>
+                                    </thead>
+                                    <tbody class="divide-y divide-darkborder/40 bg-slate-950/40">
+                                        ${tbodyRows}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // Array of primitives (e.g. MAC addresses)
+                    visualHtml = `
+                        <div class="flex flex-wrap gap-2">
+                            ${val.map(item => `<span class="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-slate-950 border border-darkborder text-emerald-400">${escapeHtml(item)}</span>`).join('')}
+                        </div>
+                    `;
+                }
+            } else if (typeof val === 'object' && val !== null) {
+                // Object (e.g. rds_info) -> Key-Value Cards
+                const entries = Object.entries(val);
+                if (entries.length === 0) {
+                    visualHtml = `<div class="text-xs text-slate-500 italic p-3.5 bg-slate-950/40 rounded-xl border border-darkborder/40">No attributes reported.</div>`;
+                } else {
+                    let cardsHtml = entries.map(([k, v]) => {
+                        const isMultiline = typeof v === 'string' && (v.includes('\n') || v.length > 80);
+                        if (isMultiline) {
+                            return `
+                                <div class="col-span-full bg-slate-950/80 p-3.5 rounded-xl border border-darkborder/60 space-y-1.5">
+                                    <div class="text-[11px] font-bold text-slate-400 uppercase tracking-wider">${formatColumnHeader(k)}</div>
+                                    <pre class="bg-slate-900/90 p-3 rounded-lg border border-darkborder text-xs text-emerald-300 font-mono overflow-x-auto select-all whitespace-pre-wrap">${escapeHtml(v)}</pre>
+                                </div>
+                            `;
+                        } else if (typeof v === 'boolean') {
+                            return `
+                                <div class="bg-slate-950/70 p-3 rounded-xl border border-darkborder/60 flex items-center justify-between">
+                                    <span class="text-xs font-semibold text-slate-300">${formatColumnHeader(k)}</span>
+                                    <span class="text-xs font-bold px-2 py-0.5 rounded ${v ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20' : 'text-slate-400 bg-slate-800'}">
+                                        ${v ? '<i class="fa-solid fa-circle-check mr-1"></i> Yes' : '<i class="fa-solid fa-circle-xmark mr-1"></i> No'}
+                                    </span>
+                                </div>
+                            `;
+                        } else {
+                            return `
+                                <div class="bg-slate-950/70 p-3 rounded-xl border border-darkborder/60 space-y-1">
+                                    <div class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">${formatColumnHeader(k)}</div>
+                                    <div class="text-sm font-semibold text-slate-200 break-words font-mono">${escapeHtml(v)}</div>
+                                </div>
+                            `;
+                        }
+                    }).join('');
+
+                    visualHtml = `<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">${cardsHtml}</div>`;
+                }
+            } else {
+                // Primitive value (string/number/boolean)
+                if (displayMode === 'badge') {
+                    visualHtml = `<span class="inline-flex items-center px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-slate-950 border border-darkborder text-brand-400">${escapeHtml(val)}</span>`;
+                } else {
+                    visualHtml = `<div class="font-mono text-slate-200 text-sm font-semibold break-all bg-slate-950/50 p-2.5 rounded-lg border border-darkborder/50">${escapeHtml(val)}</div>`;
+                }
+            }
+
+            const jsonStr = hasValue ? JSON.stringify(val, null, 2) : 'null';
+
+            return `
+                <div class="bg-slate-900/50 border border-darkborder rounded-2xl p-5 shadow-lg space-y-3">
+                    <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-darkborder/40 pb-3">
+                        <div>
+                            <div class="flex items-center gap-2 flex-wrap">
+                                <span class="font-bold text-slate-100 text-sm">${escapeHtml(prop.display_name)}</span>
+                                <span class="text-[10px] text-slate-400 uppercase font-mono px-1.5 py-0.5 rounded border border-darkborder bg-slate-950">${escapeHtml(prop.data_type)}</span>
+                                <span class="text-[10px] text-brand-400 uppercase font-mono px-1.5 py-0.5 rounded border border-brand-900/60 bg-brand-950/30">${escapeHtml(displayMode)}</span>
+                            </div>
+                            ${prop.description ? `<p class="text-xs text-slate-400 mt-0.5">${escapeHtml(prop.description)}</p>` : ''}
+                        </div>
+                        ${hasValue ? `
+                            <div class="flex items-center gap-2">
+                                <button onclick="togglePropertyView('${uid}')" id="btn-toggle-${uid}" class="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-darkborder transition flex items-center gap-1 font-medium">
+                                    <i class="fa-solid fa-code"></i> JSON
+                                </button>
+                                <button onclick="copyPropertyJson('${uid}')" class="px-2.5 py-1 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg border border-darkborder transition flex items-center gap-1 font-medium">
+                                    <i class="fa-solid fa-copy"></i> Copy
+                                </button>
+                            </div>
+                        ` : ''}
+                    </div>
+                    <div id="visual-${uid}">${visualHtml}</div>
+                    <div id="json-${uid}" class="hidden">
+                        <pre class="bg-slate-950 p-4 rounded-xl border border-darkborder text-xs text-emerald-400 font-mono overflow-x-auto select-all whitespace-pre-wrap max-h-[380px]">${escapeHtml(jsonStr)}</pre>
+                    </div>
+                </div>
+            `;
+        }
+
         async function loadDynamicProperties(hostId) {
             try {
                 const res = await fetch(`/api/host-properties/${hostId}`);
@@ -1218,8 +1556,8 @@ Waiting for configuration or start...
                     const btn = document.createElement('button');
                     btn.onclick = () => switchTab(tabId);
                     btn.id = `btn-${tabId}`;
-                    btn.className = "dynamic-cat-btn py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition";
-                    btn.innerHTML = `<i class="fa-solid fa-list mr-2 w-4 text-center"></i>${cat.display_name}`;
+                    btn.className = "dynamic-cat-btn py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition flex items-center";
+                    btn.innerHTML = `<i class="fa-solid ${cat.icon || 'fa-folder'} mr-2 w-4 text-center"></i><span>${cat.display_name}</span>`;
                     navContainer.insertBefore(btn, insertBeforeNode);
                     
                     // Create pane
@@ -1229,37 +1567,22 @@ Waiting for configuration or start...
                     
                     let propsHtml = '';
                     cat.properties.forEach(prop => {
-                        let val = prop.value;
-                        if (val !== null && val !== undefined) {
-                            if (!window.hostProbeCache) window.hostProbeCache = {};
-                            if (!window.hostProbeCache[hostId]) window.hostProbeCache[hostId] = {};
-                            if (window.hostProbeCache[hostId][prop.name] === undefined) {
-                                window.hostProbeCache[hostId][prop.name] = val;
-                            }
-                        }
-                        if (val == null) val = '-';
-                        else if (typeof val === 'object') val = '<pre class="text-xs mt-2 bg-slate-900 p-2 rounded border border-darkborder/50 text-slate-300 overflow-x-auto">' + JSON.stringify(val, null, 2) + '</pre>';
-                        else val = `<span class="font-bold text-slate-200 break-all">${val}</span>`;
-                        
-                        propsHtml += `
-                            <div class="bg-slate-900/40 border border-darkborder rounded-xl p-4">
-                                <div class="text-xs text-slate-400 uppercase tracking-wider mb-1">${prop.display_name}</div>
-                                <div class="text-sm text-slate-300">${prop.description || ''}</div>
-                                <div class="mt-2">${val}</div>
-                            </div>
-                        `;
+                        propsHtml += renderPropertyCard(prop, hostId);
                     });
                     
-                    if(cat.properties.length === 0) {
-                        propsHtml = '<div class="text-slate-500 italic p-4 text-center bg-slate-900/20 rounded-xl border border-darkborder border-dashed">No properties in this category</div>';
+                    if (cat.properties.length === 0) {
+                        propsHtml = '<div class="text-slate-500 italic p-6 text-center bg-slate-900/20 rounded-2xl border border-darkborder border-dashed">No properties configured in this category.</div>';
                     }
                     
                     pane.innerHTML = `
-                        <div class="bg-darkcard border border-darkborder rounded-2xl p-6 shadow-xl">
-                            <h3 class="text-lg font-bold text-white mb-4 border-b border-darkborder/50 pb-2 flex items-center">
-                                <i class="fa-solid fa-folder text-brand-400 mr-2"></i> ${cat.display_name}
-                            </h3>
-                            <div class="grid grid-cols-1 gap-4">${propsHtml}</div>
+                        <div class="bg-darkcard border border-darkborder rounded-2xl p-6 shadow-xl space-y-6">
+                            <div class="flex items-center justify-between border-b border-darkborder/50 pb-4">
+                                <h3 class="text-lg font-bold text-white flex items-center">
+                                    <i class="fa-solid ${cat.icon || 'fa-folder'} text-brand-400 mr-2.5"></i> ${cat.display_name}
+                                </h3>
+                                <span class="text-xs text-slate-400 font-mono bg-slate-900 px-2.5 py-1 rounded-lg border border-darkborder">${cat.properties.length} properties</span>
+                            </div>
+                            <div class="grid grid-cols-1 gap-5">${propsHtml}</div>
                         </div>
                     `;
                     contentContainer.appendChild(pane);
@@ -1725,12 +2048,16 @@ Waiting for configuration or start...
 
         function switchTab(tabId) {
             document.querySelectorAll('.tab-pane').forEach(el => el.classList.add('hidden'));
-            document.querySelectorAll('[id^="btn-tab-"]').forEach(el => el.classList.remove('tab-active'));
+            document.querySelectorAll('[id^="btn-tab-"], .dynamic-cat-btn').forEach(el => el.classList.remove('tab-active'));
 
             const targetTab = document.getElementById(tabId);
             const targetBtn = document.getElementById(`btn-${tabId}`);
             if (targetTab) targetTab.classList.remove('hidden');
             if (targetBtn) targetBtn.classList.add('tab-active');
+
+            if (tabId === 'tab-prober' && currentPayload && currentPayload.host_name) {
+                startProberPolling(currentPayload.host_name, 2000);
+            }
         }
 
         function copyToClipboard(elementId) {

@@ -12,12 +12,14 @@ class CategoryCreate(BaseModel):
     name: str
     display_name: str
     order: int = 0
+    icon: Optional[str] = "fa-folder"
 
 class PropertyCreate(BaseModel):
     name: str
     display_name: str
     description: Optional[str] = None
     data_type: str = "string"
+    display_mode: Optional[str] = "auto"
     category_id: int
 
 class TaskCreate(BaseModel):
@@ -80,7 +82,7 @@ def create_parser(parser: ParserCreate, db: Session = Depends(get_db)):
 
 @router.delete("/categories/{id}")
 def delete_category(id: int, db: Session = Depends(get_db)):
-    obj = db.query(PropertyCategory).get(id)
+    obj = db.get(PropertyCategory, id)
     if obj:
         db.delete(obj)
         db.commit()
@@ -88,7 +90,7 @@ def delete_category(id: int, db: Session = Depends(get_db)):
 
 @router.put("/categories/{id}")
 def update_category(id: int, cat: CategoryCreate, db: Session = Depends(get_db)):
-    obj = db.query(PropertyCategory).get(id)
+    obj = db.get(PropertyCategory, id)
     if not obj: raise HTTPException(404)
     for key, val in cat.model_dump().items():
         setattr(obj, key, val)
@@ -97,7 +99,7 @@ def update_category(id: int, cat: CategoryCreate, db: Session = Depends(get_db))
 
 @router.delete("/properties/{id}")
 def delete_property(id: int, db: Session = Depends(get_db)):
-    obj = db.query(HostProperty).get(id)
+    obj = db.get(HostProperty, id)
     if obj:
         db.delete(obj)
         db.commit()
@@ -105,7 +107,7 @@ def delete_property(id: int, db: Session = Depends(get_db)):
 
 @router.put("/properties/{id}")
 def update_property(id: int, prop: PropertyCreate, db: Session = Depends(get_db)):
-    obj = db.query(HostProperty).get(id)
+    obj = db.get(HostProperty, id)
     if not obj: raise HTTPException(404)
     for key, val in prop.model_dump().items():
         setattr(obj, key, val)
@@ -114,7 +116,7 @@ def update_property(id: int, prop: PropertyCreate, db: Session = Depends(get_db)
 
 @router.delete("/tasks/{id}")
 def delete_task(id: int, db: Session = Depends(get_db)):
-    obj = db.query(ProberTask).get(id)
+    obj = db.get(ProberTask, id)
     if obj:
         db.delete(obj)
         db.commit()
@@ -122,7 +124,7 @@ def delete_task(id: int, db: Session = Depends(get_db)):
 
 @router.put("/tasks/{id}")
 def update_task(id: int, task: TaskCreate, db: Session = Depends(get_db)):
-    obj = db.query(ProberTask).get(id)
+    obj = db.get(ProberTask, id)
     if not obj: raise HTTPException(404)
     for key, val in task.model_dump().items():
         setattr(obj, key, val)
@@ -131,7 +133,7 @@ def update_task(id: int, task: TaskCreate, db: Session = Depends(get_db)):
 
 @router.delete("/parsers/{id}")
 def delete_parser(id: int, db: Session = Depends(get_db)):
-    obj = db.query(ProberParser).get(id)
+    obj = db.get(ProberParser, id)
     if obj:
         db.delete(obj)
         db.commit()
@@ -139,7 +141,7 @@ def delete_parser(id: int, db: Session = Depends(get_db)):
 
 @router.put("/parsers/{id}")
 def update_parser(id: int, parser: ParserCreate, db: Session = Depends(get_db)):
-    obj = db.query(ProberParser).get(id)
+    obj = db.get(ProberParser, id)
     if not obj: raise HTTPException(404)
     for key, val in parser.model_dump().items():
         setattr(obj, key, val)

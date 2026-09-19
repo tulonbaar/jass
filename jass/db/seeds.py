@@ -265,37 +265,58 @@ def seed_db():
     
     db = next(get_db())
     try:
-        # Check if basic categories exist
-        if db.query(PropertyCategory).count() == 0:
-            # 1. Categories
-            overview_cat = PropertyCategory(name="overview", display_name="Overview", order=10)
-            hardware_cat = PropertyCategory(name="hardware", display_name="Hardware", order=20)
-            apps_cat = PropertyCategory(name="apps", display_name="Applications", order=30)
-            network_cat = PropertyCategory(name="network", display_name="Network & Ports", order=40)
-            logs_cat = PropertyCategory(name="logs", display_name="Event Logs", order=50)
+        # 1. Categories
+        cat_map = {}
+        default_categories = [
+            {"name": "overview", "display_name": "Overview", "order": 10, "icon": "fa-gauge-high"},
+            {"name": "hardware", "display_name": "Hardware", "order": 20, "icon": "fa-microchip"},
+            {"name": "apps", "display_name": "Applications", "order": 30, "icon": "fa-cubes"},
+            {"name": "network", "display_name": "Network & Ports", "order": 40, "icon": "fa-network-wired"},
+            {"name": "logs", "display_name": "Event Logs", "order": 50, "icon": "fa-file-lines"},
+        ]
+        for cdata in default_categories:
+            c = db.query(PropertyCategory).filter_by(name=cdata["name"]).first()
+            if not c:
+                c = PropertyCategory(**cdata)
+                db.add(c)
+                db.flush()
+            else:
+                c.display_name = cdata["display_name"]
+                c.order = cdata["order"]
+                if not getattr(c, "icon", None) or c.icon == "fa-folder":
+                    c.icon = cdata["icon"]
+            cat_map[c.name] = c
 
-            db.add_all([overview_cat, hardware_cat, apps_cat, network_cat, logs_cat])
-            db.flush()
-
-            # 2. Properties
-            props = [
-                HostProperty(name="listening_ports", display_name="Listening Ports", data_type="json", category_id=network_cat.id),
-                HostProperty(name="serial_number", display_name="Serial Number", data_type="string", category_id=hardware_cat.id),
-                HostProperty(name="manufacturer", display_name="Manufacturer", data_type="string", category_id=hardware_cat.id),
-                HostProperty(name="model", display_name="Model", data_type="string", category_id=hardware_cat.id),
-                HostProperty(name="mac_addresses", display_name="MAC Addresses", data_type="json", category_id=hardware_cat.id),
-                HostProperty(name="cpus", display_name="CPUs", data_type="json", category_id=hardware_cat.id),
-                HostProperty(name="ram_gb", display_name="RAM (GB)", data_type="number", category_id=hardware_cat.id),
-                HostProperty(name="nics", display_name="Network Interfaces", data_type="json", category_id=network_cat.id),
-                HostProperty(name="disks", display_name="Physical Disks", data_type="json", category_id=hardware_cat.id),
-                HostProperty(name="installed_applications", display_name="Installed Applications", data_type="json", category_id=apps_cat.id),
-                HostProperty(name="event_log_errors", display_name="Event Log Errors", data_type="json", category_id=logs_cat.id),
-                HostProperty(name="disk_content_scan", display_name="Disk Folders", data_type="json", category_id=hardware_cat.id),
-                HostProperty(name="rds_info", display_name="RDS Info", data_type="json", category_id=overview_cat.id),
-                HostProperty(name="recent_logins", display_name="Recent Logins", data_type="json", category_id=overview_cat.id),
-            ]
-            db.add_all(props)
-            db.flush()
+        # 2. Properties
+        default_properties = [
+            {"name": "listening_ports", "display_name": "Listening Ports", "data_type": "json", "display_mode": "table", "category": "network"},
+            {"name": "serial_number", "display_name": "Serial Number", "data_type": "string", "display_mode": "badge", "category": "hardware"},
+            {"name": "manufacturer", "display_name": "Manufacturer", "data_type": "string", "display_mode": "badge", "category": "hardware"},
+            {"name": "model", "display_name": "Model", "data_type": "string", "display_mode": "badge", "category": "hardware"},
+            {"name": "mac_addresses", "display_name": "MAC Addresses", "data_type": "json", "display_mode": "badge", "category": "hardware"},
+            {"name": "cpus", "display_name": "CPUs", "data_type": "json", "display_mode": "table", "category": "hardware"},
+            {"name": "ram_gb", "display_name": "RAM (GB)", "data_type": "number", "display_mode": "badge", "category": "hardware"},
+            {"name": "nics", "display_name": "Network Interfaces", "data_type": "json", "display_mode": "table", "category": "network"},
+            {"name": "disks", "display_name": "Physical Disks", "data_type": "json", "display_mode": "table", "category": "hardware"},
+            {"name": "installed_applications", "display_name": "Installed Applications", "data_type": "json", "display_mode": "table", "category": "apps"},
+            {"name": "event_log_errors", "display_name": "Event Log Errors", "data_type": "json", "display_mode": "table", "category": "logs"},
+            {"name": "disk_content_scan", "display_name": "Disk Folders", "data_type": "json", "display_mode": "table", "category": "hardware"},
+            {"name": "rds_info", "display_name": "RDS Info", "data_type": "json", "display_mode": "key_value", "category": "overview"},
+            {"name": "recent_logins", "display_name": "Recent Logins", "data_type": "json", "display_mode": "table", "category": "overview"},
+        ]
+        for pdata in default_properties:
+            cat_name = pdata.pop("category")
+            cat_id = cat_map[cat_name].id
+            p = db.query(HostProperty).filter_by(name=pdata["name"]).first()
+            if not p:
+                p = HostProperty(**pdata, category_id=cat_id)
+                db.add(p)
+            else:
+                p.display_name = pdata["display_name"]
+                p.data_type = pdata["data_type"]
+                p.display_mode = pdata["display_mode"]
+                p.category_id = cat_id
+        db.flush()
 
         # 3. Synchronize Parsers & Tasks (create or update)
         for probe in PROBES:

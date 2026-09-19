@@ -79,7 +79,10 @@
                     <div><label class="form-label">System Name</label><input type="text" id="cat-name" required class="form-input" placeholder="e.g. ad_info"></div>
                     <div><label class="form-label">Display Name</label><input type="text" id="cat-display" required class="form-input" placeholder="e.g. Active Directory"></div>
                 </div>
-                <div><label class="form-label">Order (int)</label><input type="number" id="cat-order" value="0" class="form-input"></div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div><label class="form-label">Order (int)</label><input type="number" id="cat-order" value="0" class="form-input"></div>
+                    <div><label class="form-label">FontAwesome Icon</label><input type="text" id="cat-icon" value="fa-folder" class="form-input" placeholder="e.g. fa-gauge-high, fa-server"></div>
+                </div>
                 <div class="flex gap-2">
                     <button type="submit" class="flex-1 bg-brand-600 hover:bg-brand-500 text-white font-bold py-2 px-4 rounded text-xs transition" id="cat-submit-btn">Save Category</button>
                     <button type="button" onclick="resetForm('cat')" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded text-xs transition">Cancel</button>
@@ -103,14 +106,29 @@
                     <div><label class="form-label">Display Name</label><input type="text" id="prop-display" required class="form-input" placeholder="e.g. Domain Role"></div>
                 </div>
                 <div><label class="form-label">Description</label><input type="text" id="prop-desc" class="form-input"></div>
-                <div class="grid grid-cols-2 gap-4">
+                <div class="grid grid-cols-3 gap-4">
                     <div>
                         <label class="form-label">Category</label>
                         <select id="prop-cat" required class="form-input"></select>
                     </div>
                     <div>
                         <label class="form-label">Data Type</label>
-                        <select id="prop-type" class="form-input"><option value="string">String</option><option value="number">Number</option><option value="boolean">Boolean</option><option value="json">JSON</option></select>
+                        <select id="prop-type" class="form-input">
+                            <option value="string">String</option>
+                            <option value="number">Number</option>
+                            <option value="boolean">Boolean</option>
+                            <option value="json">JSON</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label">Display Mode</label>
+                        <select id="prop-display-mode" class="form-input">
+                            <option value="auto">Auto (Smart)</option>
+                            <option value="table">Table (Searchable/Sortable)</option>
+                            <option value="key_value">Key-Value Cards</option>
+                            <option value="badge">Badges</option>
+                            <option value="json">Raw JSON</option>
+                        </select>
                     </div>
                 </div>
                 <div class="flex gap-2">
@@ -222,7 +240,13 @@
             // Render Lists
             document.getElementById('categories-list').innerHTML = state.categories.map(c => `
                 <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-darkborder group hover:border-slate-500 transition">
-                    <div><span class="font-bold text-brand-400">${c.display_name}</span> <span class="text-xs text-slate-400">(${c.name})</span></div>
+                    <div class="flex items-center gap-2">
+                        <i class="fa-solid ${c.icon || 'fa-folder'} text-brand-400 text-sm"></i>
+                        <div>
+                            <span class="font-bold text-brand-400">${c.display_name}</span> 
+                            <span class="text-xs text-slate-400">(${c.name}, order: ${c.order})</span>
+                        </div>
+                    </div>
                     <div class="flex gap-2">
                         <button onclick="editItem('cat', ${c.id})" class="text-blue-400 hover:text-blue-300 text-xs opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-pen"></i></button>
                         <button onclick="delItem('categories', ${c.id})" class="text-red-400 hover:text-red-300 text-xs opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-trash"></i></button>
@@ -233,7 +257,11 @@
             document.getElementById('properties-list').innerHTML = state.properties.map(p => `
                 <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-darkborder group hover:border-slate-500 transition">
                     <div>
-                        <div class="font-bold text-yellow-400">${p.display_name} <span class="text-[10px] text-slate-500 ml-1 uppercase border border-slate-600 rounded px-1">${p.data_type}</span></div>
+                        <div class="font-bold text-yellow-400 flex items-center gap-1.5 flex-wrap">
+                            <span>${p.display_name}</span>
+                            <span class="text-[10px] text-slate-400 uppercase border border-slate-600 rounded px-1">${p.data_type}</span>
+                            <span class="text-[10px] text-brand-400 uppercase border border-brand-800 bg-brand-950/40 rounded px-1">${p.display_mode || 'auto'}</span>
+                        </div>
                         <div class="text-xs text-slate-400">${p.name} (Cat ID: ${p.category_id})</div>
                     </div>
                     <div class="flex gap-2">
@@ -272,6 +300,8 @@
             document.getElementById(`${type}-id`).value = '';
             document.getElementById(`${type}-form-title`).innerText = `Create New ${type.charAt(0).toUpperCase() + type.slice(1)}`;
             document.getElementById(`${type}-submit-btn`).innerText = `Save ${type.charAt(0).toUpperCase() + type.slice(1)}`;
+            if(type === 'cat') document.getElementById('cat-icon').value = 'fa-folder';
+            if(type === 'prop') document.getElementById('prop-display-mode').value = 'auto';
             if(type === 'parser') document.getElementById('parser-code').value = 'def parse(output):\n    import json\n    return json.loads(output)';
         }
 
@@ -283,6 +313,7 @@
                 document.getElementById('cat-name').value = item.name;
                 document.getElementById('cat-display').value = item.display_name;
                 document.getElementById('cat-order').value = item.order;
+                document.getElementById('cat-icon').value = item.icon || 'fa-folder';
             } else if (type === 'prop') {
                 item = state.properties.find(p => p.id === id);
                 document.getElementById('prop-id').value = item.id;
@@ -291,6 +322,7 @@
                 document.getElementById('prop-desc').value = item.description || '';
                 document.getElementById('prop-cat').value = item.category_id;
                 document.getElementById('prop-type').value = item.data_type;
+                document.getElementById('prop-display-mode').value = item.display_mode || 'auto';
             } else if (type === 'parser') {
                 item = state.parsers.find(p => p.id === id);
                 document.getElementById('parser-id').value = item.id;
@@ -314,7 +346,12 @@
         async function submitCategory(e) { 
             e.preventDefault(); 
             const id = document.getElementById('cat-id').value;
-            const data = { name: document.getElementById('cat-name').value, display_name: document.getElementById('cat-display').value, order: parseInt(document.getElementById('cat-order').value) };
+            const data = { 
+                name: document.getElementById('cat-name').value, 
+                display_name: document.getElementById('cat-display').value, 
+                order: parseInt(document.getElementById('cat-order').value),
+                icon: document.getElementById('cat-icon').value || 'fa-folder'
+            };
             await apiCall(id ? `/api/admin/categories/${id}` : '/api/admin/categories', id ? 'PUT' : 'POST', data); 
             resetForm('cat'); reloadAll(); 
         }
@@ -322,7 +359,14 @@
         async function submitProperty(e) { 
             e.preventDefault(); 
             const id = document.getElementById('prop-id').value;
-            const data = { name: document.getElementById('prop-name').value, display_name: document.getElementById('prop-display').value, description: document.getElementById('prop-desc').value, data_type: document.getElementById('prop-type').value, category_id: parseInt(document.getElementById('prop-cat').value) };
+            const data = { 
+                name: document.getElementById('prop-name').value, 
+                display_name: document.getElementById('prop-display').value, 
+                description: document.getElementById('prop-desc').value, 
+                data_type: document.getElementById('prop-type').value, 
+                display_mode: document.getElementById('prop-display-mode').value || 'auto',
+                category_id: parseInt(document.getElementById('prop-cat').value) 
+            };
             await apiCall(id ? `/api/admin/properties/${id}` : '/api/admin/properties', id ? 'PUT' : 'POST', data); 
             resetForm('prop'); reloadAll(); 
         }

@@ -11,6 +11,7 @@ class PropertyCategory(Base):
     name = Column(String, unique=True, index=True)
     display_name = Column(String)
     order = Column(Integer, default=0)
+    icon = Column(String, default="fa-folder")
 
     properties = relationship("HostProperty", back_populates="category", cascade="all, delete-orphan")
 
@@ -24,6 +25,7 @@ class HostProperty(Base):
     display_name = Column(String)
     description = Column(String, nullable=True)
     data_type = Column(String, default="string") # string, number, boolean, json, list
+    display_mode = Column(String, default="auto") # auto, table, key_value, badge, json
     
     category_id = Column(Integer, ForeignKey("property_categories.id"))
     category = relationship("PropertyCategory", back_populates="properties")
