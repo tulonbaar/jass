@@ -8,7 +8,7 @@ import time
 import requests
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
-from typing import Optional, Any, List, Dict
+from typing import Optional, Any, List, Dict, Tuple
 from jass.core.prober_crypto import encrypt_payload, decrypt_payload
 from jass.core.prober_client import ProberClient
 from jass.db.models import ProberTask, HostProperty, HostPropertyValue
@@ -22,6 +22,32 @@ router = APIRouter(prefix="/api/prober", tags=["Prober"])
 
 # In-memory per-host activity logs buffer
 _HOST_LOGS: Dict[str, List[str]] = defaultdict(list)
+
+# In-memory cache for resolved Zabbix host info and interface IP
+# host_identifier -> (host_info_dict, target_ip, expire_timestamp)
+_HOST_RESOLVE_CACHE: Dict[str, Tuple[Dict[str, Any], Optional[str], float]] = {}
+
+def _resolve_host(analyzer, host_identifier: str) -> Tuple[Dict[str, Any], Optional[str]]:
+    now = time.time()
+    if host_identifier in _HOST_RESOLVE_CACHE:
+        host_info, target_ip, expiry = _HOST_RESOLVE_CACHE[host_identifier]
+        if now < expiry:
+            return host_info, target_ip
+
+    hosts = analyzer.list_hosts(search=host_identifier)
+    if not hosts:
+        raise HTTPException(status_code=404, detail=f"Host '{host_identifier}' not found in Zabbix")
+    
+    host_info = hosts[0]
+    interfaces = analyzer.client.call("hostinterface.get", {"output": ["ip"], "hostids": host_info["hostid"]})
+    target_ip = interfaces[0]["ip"] if interfaces else None
+
+    # Cache for 5 minutes
+    _HOST_RESOLVE_CACHE[host_identifier] = (host_info, target_ip, now + 300)
+    if host_info["hostid"] != host_identifier:
+        _HOST_RESOLVE_CACHE[host_info["hostid"]] = (host_info, target_ip, now + 300)
+
+    return host_info, target_ip
 
 def log_host_event(host_identifier: str, message: str):
     """Appends an event to the host's activity log buffer."""
@@ -48,22 +74,16 @@ class ExecuteTaskRequest(BaseModel):
 DeployRequest = ExecuteTaskRequest
 
 @router.post("/manual-start")
-async def manual_start_prober(req: ManualStartRequest, request: Request):
+def manual_start_prober(req: ManualStartRequest, request: Request):
     try:
         analyzer = _get_analyzer()
         if not analyzer:
             raise HTTPException(status_code=500, detail="Zabbix analyzer not initialized")
 
-        hosts = analyzer.list_hosts(search=req.host_identifier)
-        if not hosts:
-            raise HTTPException(status_code=404, detail="Host not found in Zabbix")
-        
-        host_info = hosts[0]
-        interfaces = analyzer.client.call("hostinterface.get", {"output": ["ip"], "hostids": host_info["hostid"]})
-        if not interfaces:
+        host_info, target_ip = _resolve_host(analyzer, req.host_identifier)
+        if not target_ip:
             raise HTTPException(status_code=400, detail="Host has no IP interfaces")
         
-        target_ip = interfaces[0]["ip"]
         psk = req.psk.strip() if req.psk and req.psk.strip() else secrets.token_hex(16)
         
         jass_url = os.environ.get("JASS_BASE_URL", "").rstrip("/") or str(request.base_url).rstrip("/")
@@ -102,18 +122,12 @@ async def manual_start_prober(req: ManualStartRequest, request: Request):
 
 @router.post("/stop/{host_identifier}")
 @router.post("/terminate/{host_identifier}")
-async def stop_prober(host_identifier: str):
+def stop_prober(host_identifier: str):
     """Sends termination signal to the prober agent, removes firewall rule, and deletes executable."""
     try:
         analyzer = _get_analyzer()
-        hosts = analyzer.list_hosts(search=host_identifier)
-        if not hosts:
-            raise HTTPException(status_code=404, detail="Host not found in Zabbix")
-        
-        host_info = hosts[0]
+        host_info, target_ip = _resolve_host(analyzer, host_identifier)
         host_id = host_info["hostid"]
-        interfaces = analyzer.client.call("hostinterface.get", {"output": ["ip"], "hostids": host_id})
-        target_ip = interfaces[0]["ip"] if interfaces else None
         if not target_ip:
             raise HTTPException(status_code=400, detail="Host has no IP interfaces")
 
@@ -138,18 +152,12 @@ async def stop_prober(host_identifier: str):
 
 
 @router.get("/logs/{host_identifier}")
-async def prober_logs(host_identifier: str, tail: int = 50):
+def prober_logs(host_identifier: str, tail: int = 50):
     """Fetches real-time combined logs: server-side activity events and remote agent logs."""
     try:
         analyzer = _get_analyzer()
-        hosts = analyzer.list_hosts(search=host_identifier)
-        if not hosts:
-            raise HTTPException(status_code=404, detail="Host not found in Zabbix")
-        
-        host_info = hosts[0]
+        host_info, target_ip = _resolve_host(analyzer, host_identifier)
         host_id = host_info["hostid"]
-        interfaces = analyzer.client.call("hostinterface.get", {"output": ["ip"], "hostids": host_id})
-        target_ip = interfaces[0]["ip"] if interfaces else None
 
         # Server-side logs for this host
         server_logs = list(_HOST_LOGS.get(host_id, []))
@@ -190,7 +198,7 @@ async def prober_logs(host_identifier: str, tail: int = 50):
 
 
 @router.post("/execute-task/{task_id}")
-async def execute_task(task_id: int, req: ExecuteTaskRequest):
+def execute_task(task_id: int, req: ExecuteTaskRequest):
     db = SessionLocal()
     try:
         task = db.query(ProberTask).filter(ProberTask.id == task_id).first()
@@ -198,16 +206,10 @@ async def execute_task(task_id: int, req: ExecuteTaskRequest):
             raise HTTPException(status_code=404, detail="Task not found")
 
         analyzer = _get_analyzer()
-        hosts = analyzer.list_hosts(search=req.host_identifier)
-        if not hosts:
-            raise HTTPException(status_code=404, detail="Host not found in Zabbix")
-        
-        host_info = hosts[0]
+        host_info, target_ip = _resolve_host(analyzer, req.host_identifier)
         host_id = host_info["hostid"]
-        interfaces = analyzer.client.call("hostinterface.get", {"output": ["ip"], "hostids": host_id})
-        target_ip = interfaces[0]["ip"] if interfaces else None
 
-        client = ProberClient(host_id=host_id, host_ip=target_ip)
+        client = ProberClient(host_id=host_id, host_ip=target_ip, db=db)
         try:
             if not client.is_alive():
                 log_host_event(host_id, f"Cannot execute task '{task.name}': Prober is not alive on {target_ip}:{client.config.port}")
@@ -216,27 +218,32 @@ async def execute_task(task_id: int, req: ExecuteTaskRequest):
             log_host_event(host_id, f"Executing task '{task.name}'...")
             result = client.execute_script(task.content)
             
-            if result.get("exit_code") != 0:
-                log_host_event(host_id, f"Task '{task.name}' failed with exit code {result.get('exit_code')}: {result.get('stderr')}")
-                return {"status": "error", "error": result.get("stderr")}
+            exit_code = result.get("exit_code", 0)
+            raw_stdout = result.get("stdout", "")
+            stderr_output = result.get("stderr", "")
 
-            log_host_event(host_id, f"Task '{task.name}' finished successfully (output size: {len(result.get('stdout', ''))} bytes)")
-
-            # Parsing and Mapping
+            # Parsing first
             parsed_data = {}
-            if task.parser_id:
+            if task.parser_id and task.parser and task.parser.code:
                 try:
                     local_env = {}
                     exec(task.parser.code, local_env)
                     if "parse" in local_env:
-                        parsed_data = local_env["parse"](result.get("stdout", ""))
+                        parsed_data = local_env["parse"](raw_stdout)
                     else:
                         logger.error("Parser code does not define a 'parse' function")
                 except Exception as e:
                     logger.error(f"Failed to parse output: {e}")
                     log_host_event(host_id, f"Parser error for task '{task.name}': {e}")
-                    return {"status": "error", "error": f"Parser error: {e}"}
-            
+
+            success = (exit_code == 0) or bool(parsed_data)
+            if not success:
+                err_msg = stderr_output or raw_stdout or f"Task exited with code {exit_code}"
+                log_host_event(host_id, f"Task '{task.name}' failed with exit code {exit_code}: {err_msg}")
+                return {"status": "error", "error": err_msg}
+
+            log_host_event(host_id, f"Task '{task.name}' finished successfully (output size: {len(raw_stdout)} bytes)")
+
             # Mapping to HostPropertyValue
             if task.map_to_properties and parsed_data:
                 for prop_name, value in parsed_data.items():
@@ -249,7 +256,7 @@ async def execute_task(task_id: int, req: ExecuteTaskRequest):
                         val_record.value = value
                 db.commit()
 
-            return {"status": "success", "parsed_data": parsed_data, "raw_stdout": result.get("stdout")}
+            return {"status": "success", "parsed_data": parsed_data, "raw_stdout": raw_stdout}
         finally:
             client.close()
     finally:
@@ -257,16 +264,10 @@ async def execute_task(task_id: int, req: ExecuteTaskRequest):
 
 
 @router.get("/status/{host_identifier}")
-async def prober_status(host_identifier: str):
+def prober_status(host_identifier: str):
     analyzer = _get_analyzer()
-    hosts = analyzer.list_hosts(search=host_identifier)
-    if not hosts:
-        raise HTTPException(status_code=404, detail="Host not found in Zabbix")
-    
-    host_info = hosts[0]
+    host_info, target_ip = _resolve_host(analyzer, host_identifier)
     host_id = host_info["hostid"]
-    interfaces = analyzer.client.call("hostinterface.get", {"output": ["ip"], "hostids": host_id})
-    target_ip = interfaces[0]["ip"] if interfaces else None
 
     is_alive = False
     port = None

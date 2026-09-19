@@ -6,12 +6,38 @@ from datetime import datetime
 # Common PowerShell preamble
 _PS_PREAMBLE = "$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='SilentlyContinue';"
 
-PARSERS = {
-    "listening_ports": '''
+_PARSER_PREAMBLE = '''
 import json
+def _extract_json_fragment(text: str):
+    if not text:
+        return None
+    text = text.strip()
+    start_candidates = [i for i in (text.find("{"), text.find("[")) if i != -1]
+    if not start_candidates:
+        return None
+    start = min(start_candidates)
+    end = max(text.rfind("}"), text.rfind("]"))
+    if end == -1 or end < start:
+        return None
+    return text[start : end + 1]
+
+def _safe_json_loads(text: str):
+    frag = _extract_json_fragment(text)
+    if not frag:
+        return None
+    try:
+        return json.loads(frag)
+    except Exception:
+        return None
+'''
+
+PARSERS = {
+    "listening_ports": _PARSER_PREAMBLE + '''
 def parse(output: str):
     try:
-        parsed = json.loads(output)
+        parsed = _safe_json_loads(output)
+        if parsed is None:
+            return {"listening_ports": []}
         rows = parsed if isinstance(parsed, list) else [parsed]
         res = [
             {
@@ -27,11 +53,10 @@ def parse(output: str):
     except Exception:
         return {"listening_ports": []}
 ''',
-    "hardware_inventory": '''
-import json
+    "hardware_inventory": _PARSER_PREAMBLE + '''
 def parse(output: str):
     try:
-        parsed = json.loads(output)
+        parsed = _safe_json_loads(output)
         if not isinstance(parsed, dict):
             return {"hardware_raw": output.strip()}
         macs = parsed.get("MacAddresses") or []
@@ -63,11 +88,12 @@ def parse(output: str):
     except Exception:
         return {"hardware_raw": output.strip()}
 ''',
-    "installed_applications": '''
-import json
+    "installed_applications": _PARSER_PREAMBLE + '''
 def parse(output: str):
     try:
-        parsed = json.loads(output)
+        parsed = _safe_json_loads(output)
+        if parsed is None:
+            return {"installed_applications": []}
         rows = parsed if isinstance(parsed, list) else [parsed]
         res = [
             {
@@ -84,11 +110,12 @@ def parse(output: str):
     except Exception:
         return {"installed_applications": []}
 ''',
-    "event_log_errors": '''
-import json
+    "event_log_errors": _PARSER_PREAMBLE + '''
 def parse(output: str):
     try:
-        parsed = json.loads(output)
+        parsed = _safe_json_loads(output)
+        if parsed is None:
+            return {"event_log_errors": []}
         rows = parsed if isinstance(parsed, list) else [parsed]
         res = [
             {
@@ -106,11 +133,12 @@ def parse(output: str):
     except Exception:
         return {"event_log_errors": []}
 ''',
-    "disk_content_scan": '''
-import json
+    "disk_content_scan": _PARSER_PREAMBLE + '''
 def parse(output: str):
     try:
-        parsed = json.loads(output)
+        parsed = _safe_json_loads(output)
+        if parsed is None:
+            return {"disk_content_scan": []}
         rows = parsed if isinstance(parsed, list) else [parsed]
         res = [
             {
@@ -126,11 +154,12 @@ def parse(output: str):
     except Exception:
         return {"disk_content_scan": []}
 ''',
-    "rds_info": '''
-import json
+    "rds_info": _PARSER_PREAMBLE + '''
 def parse(output: str):
     try:
-        parsed = json.loads(output)
+        parsed = _safe_json_loads(output)
+        if parsed is None:
+            return {"rds_info": {}}
         if isinstance(parsed, list):
             res = parsed[0] if parsed else {}
         else:
@@ -139,11 +168,12 @@ def parse(output: str):
     except Exception:
         return {"rds_info": {}}
 ''',
-    "recent_logins": '''
-import json
+    "recent_logins": _PARSER_PREAMBLE + '''
 def parse(output: str):
     try:
-        parsed = json.loads(output)
+        parsed = _safe_json_loads(output)
+        if parsed is None:
+            return {"recent_logins": []}
         rows = parsed if isinstance(parsed, list) else [parsed]
         res = [
             {
@@ -166,21 +196,21 @@ PROBES = [
         "command": (
             _PS_PREAMBLE + " "
             "$c = Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue; "
-            "if ($c) { $res = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue; if ($res) { $res | Select-Object LocalAddress,LocalPort,OwningProcess,@{N='Process';E={(Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName}} | ConvertTo-Json -Compress; exit } }; "
+            "if ($c) { $res = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue; if ($res) { $res | Select-Object LocalAddress,LocalPort,OwningProcess,@{N='Process';E={(Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName}} | ConvertTo-Json -Compress; exit 0 } }; "
             "$ports = netstat -ano -p tcp | Where-Object { $_ -match '(?i)LISTEN|NAS' }; "
             "$out = @(); "
             "foreach ($p in $ports) { "
             "  $line = $p.ToString().Trim(); "
-            "  $m = [regex]::Match($line, '^\\s*TCP\\s+([0-9.\\[\\]:]+):(\\d+)\\s+.*?\\s+(\\d+)\\s*$'); "
+            "  $m = [regex]::Match($line, '^\\\\s*TCP\\\\s+([0-9.\\\\[\\\\]:]+):(\\\\d+)\\\\s+.*?\\\\s+(\\\\d+)\\\\s*$'); "
             "  if ($m.Success) { "
             "    $targetPid = [int]$m.Groups[3].Value; "
             "    $port = [int]$m.Groups[2].Value; "
             "    $addr = $m.Groups[1].Value; "
-            "    $proc = (Get-Process -Id $targetPid -ErrorAction SilentlyContinue).ProcessName; "
+            "    $proc = ''; try { $proc = (Get-Process -Id $targetPid -ErrorAction SilentlyContinue).ProcessName } catch {}; "
             "    $out += [PSCustomObject]@{LocalAddress=$addr;LocalPort=$port;OwningProcess=$targetPid;Process=$proc} "
             "  } "
             "}; "
-            "if ($out.Count -eq 0) { '[]' } else { $out | ConvertTo-Json -Compress }"
+            "if ($out.Count -eq 0) { '[]' } else { $out | ConvertTo-Json -Compress }; exit 0"
         )
     },
     {
@@ -195,7 +225,7 @@ PROBES = [
             "$ram = if ($cs -and $cs.TotalPhysicalMemory) { [math]::Round($cs.TotalPhysicalMemory / 1GB, 2) } else { 0 }; "
             "$nics = @(&$getCim Win32_NetworkAdapter | Where-Object { $_.NetConnectionStatus -eq 2 } | Select-Object Name, MACAddress, Speed); "
             "$disks = @(&$getCim Win32_DiskDrive | Select-Object Model, Size, InterfaceType); "
-            "[PSCustomObject]@{SerialNumber=$bios.SerialNumber; Manufacturer=$cs.Manufacturer; Model=$cs.Model; CPUs=$cpus; RAM_GB=$ram; NICs=$nics; Disks=$disks; MacAddresses=@($nics | ForEach-Object { $_.MACAddress })} | ConvertTo-Json -Depth 4 -Compress"
+            "[PSCustomObject]@{SerialNumber=$bios.SerialNumber; Manufacturer=$cs.Manufacturer; Model=$cs.Model; CPUs=$cpus; RAM_GB=$ram; NICs=$nics; Disks=$disks; MacAddresses=@($nics | ForEach-Object { $_.MACAddress })} | ConvertTo-Json -Depth 4 -Compress; exit 0"
         )
     },
     {
@@ -206,7 +236,7 @@ PROBES = [
             "$paths = 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'; "
             "$apps = @(Get-ItemProperty $paths -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName } | "
             "Select-Object DisplayName,DisplayVersion,Publisher,InstallDate,InstallLocation | Sort-Object DisplayName); "
-            "if ($apps.Count -eq 0) { '[]' } else { $apps | ConvertTo-Json -Compress }"
+            "if ($apps.Count -eq 0) { '[]' } else { $apps | ConvertTo-Json -Compress }; exit 0"
         )
     },
     {
@@ -216,7 +246,7 @@ PROBES = [
             _PS_PREAMBLE + " "
             "$events = @(Get-WinEvent -FilterHashtable @{LogName='System','Application';Level=1,2;StartTime=(Get-Date).AddHours(-24)} -MaxEvents 50 -ErrorAction SilentlyContinue | "
             "Select-Object @{N='TimeCreated';E={$_.TimeCreated.ToString('yyyy-MM-dd HH:mm:ss')}},LogName,Id,LevelDisplayName,ProviderName,@{N='Message';E={ if ($_.Message) { $m = $_.Message; foreach($q in 8222,8221,8220,8216,8217,34){ $m = $m.Replace([char]$q, [char]39) }; $m } else { '' } }}); "
-            "if ($events.Count -eq 0) { '[]' } else { $events | ConvertTo-Json -Compress -Depth 3 }"
+            "if ($events.Count -eq 0) { '[]' } else { $events | ConvertTo-Json -Compress -Depth 3 }; exit 0"
         )
     },
     {
@@ -229,7 +259,7 @@ PROBES = [
             "Get-PSDrive -PSProvider FileSystem | ForEach-Object { $d = $_.Root; "
             "Get-ChildItem -Path $d -Directory -ErrorAction SilentlyContinue | ForEach-Object { "
             "$subs = ''; try { $subs = ([System.IO.Directory]::EnumerateDirectories($_.FullName) | ForEach-Object { [System.IO.Path]::GetFileName($_) }) -join ', ' } catch {}; $out += [PSCustomObject]@{Drive=$d;Folder=$_.Name;Standard=($known -contains $_.Name);Subfolders=$subs} } }; "
-            "if ($out.Count -eq 0) { '[]' } else { $out | ConvertTo-Json -Compress }"
+            "if ($out.Count -eq 0) { '[]' } else { $out | ConvertTo-Json -Compress }; exit 0"
         )
     },
     {
@@ -239,11 +269,10 @@ PROBES = [
             _PS_PREAMBLE + " "
             "$ts = Get-ItemProperty -Path 'HKLM:\\System\\CurrentControlSet\\Control\\Terminal Server' -ErrorAction SilentlyContinue; "
             "$rdp = Get-ItemProperty -Path 'HKLM:\\System\\CurrentControlSet\\Control\\Terminal Server\\WinStations\\RDP-Tcp' -ErrorAction SilentlyContinue; "
-            "$q = qwinsta 2>&1; "
-            "$qwinsta = ($q | Out-String).Trim(); "
+            "$qwinsta = ''; try { $qwinsta = (qwinsta 2>$null | Out-String).Trim() } catch {}; "
             "$enabled = if ($ts -and $ts.fDenyTSConnections -ne $null) { $ts.fDenyTSConnections -eq 0 } else { $false }; "
             "$port = if ($rdp -and $rdp.PortNumber -ne $null) { [int]$rdp.PortNumber } else { 3389 }; "
-            "[PSCustomObject]@{TSEnabled=$enabled;Port=$port;Sessions=$qwinsta} | ConvertTo-Json -Compress"
+            "[PSCustomObject]@{TSEnabled=$enabled;Port=$port;Sessions=$qwinsta} | ConvertTo-Json -Compress; exit 0"
         )
     },
     {
@@ -255,7 +284,7 @@ PROBES = [
             "$matched = @(); "
             "if ($events) { foreach ($e in $events) { if ($e.Properties.Count -gt 8 -and ($e.Properties[8].Value -in 2,10)) { "
             "$user = $e.Properties[5].Value; if ($user -notmatch 'UMFD|DWM') { $matched += [PSCustomObject]@{User=$user} } } } }; "
-            "if ($matched.Count -gt 0) { $matched | Group-Object User | Select-Object Name, Count | ConvertTo-Json -Compress } else { '[]' }"
+            "if ($matched.Count -gt 0) { $matched | Group-Object User | Select-Object Name, Count | ConvertTo-Json -Compress } else { '[]' }; exit 0"
         )
     }
 ]

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/aes"
 	"crypto/cipher"
 	"encoding/json"
@@ -165,8 +166,12 @@ func executeHandler(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("[EXEC] Executing PowerShell script (%d chars) from %s", len(req.Script), r.RemoteAddr)
 
-	// Execute PowerShell
-	cmd := exec.Command("powershell.exe", "-NonInteractive", "-NoProfile", "-Command", req.Script)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	// Execute PowerShell via Stdin with -ExecutionPolicy Bypass to avoid argument length limits, quoting issues, or policy restrictions
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-NonInteractive", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", "-")
+	cmd.Stdin = strings.NewReader(req.Script)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -178,6 +183,9 @@ func executeHandler(w http.ResponseWriter, r *http.Request) {
 			exitCode = exitError.ExitCode()
 		} else {
 			exitCode = -1
+		}
+		if stderr.Len() == 0 {
+			stderr.WriteString(fmt.Sprintf("Execution error: %v", err))
 		}
 	}
 

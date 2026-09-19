@@ -37,7 +37,8 @@ class TestProberFeatures(unittest.TestCase):
         Base.metadata.create_all(bind=TEST_ENGINE)
 
     def test_prober_client_fetch_logs_and_terminate(self):
-        client = ProberClient(host_id="1001", host_ip="127.0.0.1")
+        db = TestingSessionLocal()
+        client = ProberClient(host_id="1001", host_ip="127.0.0.1", db=db)
 
         # Test fetch_logs success
         with patch("requests.post") as mock_post:
@@ -53,6 +54,7 @@ class TestProberFeatures(unittest.TestCase):
             self.assertTrue(result)
 
         client.close()
+        db.close()
 
     def test_log_host_event_and_isolation(self):
         log_host_event("host_A", "Event A1")

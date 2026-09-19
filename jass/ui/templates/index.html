@@ -908,9 +908,9 @@ Waiting for configuration or start...
                 
                 const proberTab = document.getElementById('tab-prober');
                 if (proberTab && !proberTab.classList.contains('hidden')) {
-                    startProberPolling(currentPayload.host_name, 2000);
+                    startProberPolling(currentPayload.host_name, 5000);
                 } else {
-                    pollProberLogs(currentPayload.host_name);
+                    startProberPolling(currentPayload.host_name, 60000);
                 }
 
                 showToast(`Completed analysis for ${currentPayload.host_name}.`);
@@ -1002,12 +1002,12 @@ Waiting for configuration or start...
                     `>>> INSTRUCTIONS:\n` +
                     `1. Log into server ${currentPayload.host_name} (${data.ip})\n` +
                     `2. Run the command shown above in PowerShell\n` +
-                    `3. JASS is now monitoring http://${data.ip}:${data.port}/ping every 2 seconds\n` +
+                    `3. JASS is now monitoring http://${data.ip}:${data.port}/ping every 3 seconds\n` +
                     `4. As soon as prober.exe runs, status switches to ONLINE and logs stream in real time.\n`;
 
                 showToast(`Configuration saved! Run command on target server.`);
                 lastProberState = false;
-                startProberPolling(currentPayload.host_name, 2000);
+                triggerFastProberPolling(currentPayload.host_name, 60);
             } catch (e) {
                 logEl.innerText += `[JASS] Error: ${e.message}\n`;
                 badgeEl.className = 'px-3 py-1 text-xs font-bold rounded-lg bg-red-500/20 text-red-400 border border-red-500/30';
@@ -1058,15 +1058,38 @@ Waiting for configuration or start...
             }
         }
 
-        function startProberPolling(hostIdentifier, intervalMs = 2000) {
+        function startProberPolling(hostIdentifier, intervalMs = 60000) {
             if (proberStatusInterval) clearInterval(proberStatusInterval);
             activeProberHost = hostIdentifier;
             pollProberLogs(hostIdentifier);
             proberStatusInterval = setInterval(() => {
+                if (document.hidden) return;
                 if (activeProberHost === hostIdentifier) {
                     pollProberLogs(hostIdentifier);
                 }
             }, intervalMs);
+        }
+
+        function triggerFastProberPolling(hostIdentifier, fastSeconds = 45) {
+            if (proberStatusInterval) clearInterval(proberStatusInterval);
+            activeProberHost = hostIdentifier;
+            pollProberLogs(hostIdentifier);
+            let elapsed = 0;
+            const fastInterval = 3000;
+            proberStatusInterval = setInterval(() => {
+                if (document.hidden) return;
+                if (activeProberHost !== hostIdentifier) {
+                    clearInterval(proberStatusInterval);
+                    return;
+                }
+                pollProberLogs(hostIdentifier);
+                elapsed += fastInterval;
+                if (elapsed >= fastSeconds * 1000 || lastProberState === true) {
+                    const proberTab = document.getElementById('tab-prober');
+                    const isProberActive = proberTab && !proberTab.classList.contains('hidden');
+                    startProberPolling(hostIdentifier, isProberActive ? 5000 : 60000);
+                }
+            }, fastInterval);
         }
 
         async function pollProberLogs(hostIdentifier, userTriggered = false) {
@@ -2055,8 +2078,12 @@ Waiting for configuration or start...
             if (targetTab) targetTab.classList.remove('hidden');
             if (targetBtn) targetBtn.classList.add('tab-active');
 
-            if (tabId === 'tab-prober' && currentPayload && currentPayload.host_name) {
-                startProberPolling(currentPayload.host_name, 2000);
+            if (currentPayload && currentPayload.host_name) {
+                if (tabId === 'tab-prober') {
+                    startProberPolling(currentPayload.host_name, 5000);
+                } else {
+                    startProberPolling(currentPayload.host_name, 60000);
+                }
             }
         }
 

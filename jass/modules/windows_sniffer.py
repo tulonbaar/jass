@@ -603,14 +603,32 @@ class WindowsSniffer(BaseSystemSniffer):
         db = SessionLocal()
         try:
             target_task = None
-            if probe_key:
-                target_task = db.query(ProberTask).filter(ProberTask.name == probe_key).first()
-            elif script_name_or_cmd:
-                target_task = db.query(ProberTask).filter(ProberTask.name == script_name_or_cmd).first()
+            try:
+                if probe_key:
+                    target_task = db.query(ProberTask).filter(ProberTask.name == probe_key).first()
+                elif script_name_or_cmd:
+                    target_task = db.query(ProberTask).filter(ProberTask.name == script_name_or_cmd).first()
+            except Exception as db_err:
+                logger.debug(f"DB query for ProberTask failed ({db_err}), will use fallback.")
+                target_task = None
 
             if not target_task:
-                logger.warning(f"Unknown task/probe_key. DB has no matching ProberTask.")
-                return None
+                # Fallback to built-in seed definitions if database is not seeded or task is missing
+                from jass.db.seeds import PROBES, PARSERS
+                target_name = probe_key or script_name_or_cmd
+                probe_seed = next((p for p in PROBES if p["name"] == target_name), None)
+                if probe_seed:
+                    class _VirtualTask:
+                        def __init__(self, s):
+                            self.name = s["name"]
+                            self.content = s["command"]
+                            self.parser_id = True
+                            self.map_to_properties = False
+                            self.parser = type("Parser", (), {"code": PARSERS.get(s["name"], "")})()
+                    target_task = _VirtualTask(probe_seed)
+                else:
+                    logger.warning(f"Unknown task/probe_key '{target_name}'. DB has no matching ProberTask.")
+                    return None
 
             # Find target IP via zabbix
             interfaces = self.client.call("hostinterface.get", {"output": ["ip"], "hostids": host_id})
@@ -619,7 +637,7 @@ class WindowsSniffer(BaseSystemSniffer):
                 logger.error(f"Cannot find IP interface for host {host_id}")
                 return None
 
-            client = ProberClient(host_id=host_id, host_ip=target_ip)
+            client = ProberClient(host_id=host_id, host_ip=target_ip, db=db)
             if not client.is_alive():
                 logger.error(f"Prober is not alive on {target_ip}. Cannot execute task.")
                 return RemoteExecutionResult(
@@ -632,27 +650,33 @@ class WindowsSniffer(BaseSystemSniffer):
             logger.info(f"Running Prober task '{target_task.name}'...")
             result = client.execute_script(target_task.content)
             
-            success = result.get("exit_code") == 0
+            exit_code = result.get("exit_code", 0)
             raw_output = result.get("stdout", "")
-            if not success:
-                logger.error(f"Task failed: {result.get('stderr')}")
-                return RemoteExecutionResult(
-                    script_name=target_task.name,
-                    probe_key=probe_key,
-                    success=False,
-                    raw_output=raw_output,
-                    error_message=result.get("stderr"),
-                )
+            stderr_output = result.get("stderr", "")
 
             parsed_data: Any = None
-            if target_task.parser_id:
+            if target_task.parser_id and target_task.parser and target_task.parser.code:
                 try:
                     local_env = {}
                     exec(target_task.parser.code, local_env)
                     if "parse" in local_env:
                         parsed_data = local_env["parse"](raw_output)
                 except Exception as e:
-                    logger.error(f"Parser error: {e}")
+                    logger.error(f"Parser error for task '{target_task.name}': {e}")
+
+            # Accept if exit code is 0 OR if we managed to parse valid data from stdout
+            # (PowerShell often sets exit code 1 on non-terminating warnings/errors even when output is valid)
+            success = (exit_code == 0) or bool(parsed_data)
+            if not success:
+                err_msg = stderr_output or raw_output or f"Task exited with code {exit_code}"
+                logger.error(f"Task '{target_task.name}' failed: {err_msg}")
+                return RemoteExecutionResult(
+                    script_name=target_task.name,
+                    probe_key=probe_key,
+                    success=False,
+                    raw_output=raw_output,
+                    error_message=err_msg,
+                )
 
             # Map to properties in DB if configured
             if target_task.map_to_properties and parsed_data and isinstance(parsed_data, dict):

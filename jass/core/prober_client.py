@@ -6,13 +6,17 @@ from jass.db.models import ProberHostConfig
 from jass.core.prober_crypto import encrypt_payload, decrypt_payload
 import logging
 
+from typing import Optional, Any
+from sqlalchemy.orm import Session
+
 logger = logging.getLogger("jass.prober_client")
 
 class ProberClient:
-    def __init__(self, host_id: str, host_ip: str):
+    def __init__(self, host_id: str, host_ip: str, db: Optional[Session] = None):
         self.host_id = host_id
         self.host_ip = host_ip
-        self.db = SessionLocal()
+        self._external_db = db is not None
+        self.db = db if db is not None else SessionLocal()
         self.config = self._get_or_create_config()
 
     def _get_or_create_config(self) -> ProberHostConfig:
@@ -25,7 +29,8 @@ class ProberClient:
         return config
 
     def close(self):
-        self.db.close()
+        if not self._external_db and self.db:
+            self.db.close()
 
     def update_psk(self, psk: str, ttl: int, port: int = 8443):
         self.config.psk = psk

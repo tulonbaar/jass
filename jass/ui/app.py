@@ -120,7 +120,7 @@ def get_or_create_analyzer() -> ZabbixAnalyzer:
 
 
 @app.get("/api/status")
-async def api_status():
+def api_status():
     """Returns Zabbix API connection status."""
     connected = False
     version = None
@@ -151,7 +151,7 @@ async def api_status():
 
 
 @app.post("/api/connect")
-async def api_connect(req: ConnectRequest):
+def api_connect(req: ConnectRequest):
     """Configures and tests Zabbix API connection."""
     state["zabbix_url"] = req.url
     state["api_token"] = req.token or ""
@@ -173,7 +173,7 @@ async def api_connect(req: ConnectRequest):
 
 
 @app.get("/api/groups")
-async def api_groups():
+def api_groups():
     """Retrieves list of host groups."""
     analyzer = get_or_create_analyzer()
     try:
@@ -184,7 +184,7 @@ async def api_groups():
 
 
 @app.get("/api/hosts")
-async def api_hosts(group_id: Optional[str] = None, search: Optional[str] = None):
+def api_hosts(group_id: Optional[str] = None, search: Optional[str] = None):
     """Retrieves list of hosts."""
     analyzer = get_or_create_analyzer()
     try:
@@ -196,13 +196,13 @@ async def api_hosts(group_id: Optional[str] = None, search: Optional[str] = None
 
 
 @app.get("/api/probes")
-async def api_probes():
+def api_probes():
     """Lists built-in remote probes available in the JASS probe catalog."""
     return {"probes": ZabbixAnalyzer.list_available_probes()}
 
 
 @app.post("/api/analyze/host")
-async def api_analyze_host(req: AnalyzeHostRequest):
+def api_analyze_host(req: AnalyzeHostRequest):
     """Performs host telemetry analysis and returns JSON payload."""
     analyzer = get_or_create_analyzer()
     try:
@@ -226,7 +226,7 @@ async def api_analyze_host(req: AnalyzeHostRequest):
 
 
 @app.post("/api/save")
-async def api_save_payload(req: SavePayloadRequest):
+def api_save_payload(req: SavePayloadRequest):
     """Saves analysis payload as [host_name]_analysis.json."""
     try:
         pydantic_payload = HostAnalysisPayload(**req.payload)
@@ -237,7 +237,7 @@ async def api_save_payload(req: SavePayloadRequest):
 
 
 @app.get("/", response_class=HTMLResponse)
-async def get_index():
+def get_index():
     """Serves the main Web Dashboard interface."""
     template_path = Path(__file__).parent / "templates" / "index.html"
     if template_path.exists():
@@ -245,7 +245,7 @@ async def get_index():
     return HTMLResponse(content="<h1>JASS UI Template Not Found</h1>", status_code=404)
 
 @app.get("/admin", response_class=HTMLResponse)
-async def get_admin():
+def get_admin():
     """Serves the Admin Configuration interface."""
     template_path = Path(__file__).parent / "templates" / "admin.html"
     if template_path.exists():
