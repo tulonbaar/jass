@@ -126,9 +126,6 @@ type ExecRequest struct {
 
 type ExecResponse struct {
 	Stdout       string `json:"stdout"`
-	Stderr       string `json:"stderr"`
-	ExitCode     int    `json:"exit_code"`
-	Stdout       string `json:"stdout"`
 	StdoutBase64 string `json:"stdout_b64,omitempty"`
 	Stderr       string `json:"stderr"`
 	StderrBase64 string `json:"stderr_b64,omitempty"`
@@ -217,9 +214,6 @@ func executeHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	resp := ExecResponse{
-		Stdout:       stdout.String(),
-		Stderr:       stderr.String(),
-		ExitCode:     exitCode,
 		Stdout:       stdout.String(),
 		StdoutBase64: base64.StdEncoding.EncodeToString(stdout.Bytes()),
 		Stderr:       stderr.String(),

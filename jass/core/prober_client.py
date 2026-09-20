@@ -67,7 +67,6 @@ class ProberClient:
             raise Exception(f"Failed to communicate with prober: {e}")
 
         try:
-            return decrypt_payload(resp.content, self.config.psk)
             res = decrypt_payload(resp.content, self.config.psk)
             import base64
             for field in ('stdout', 'stderr'):
