@@ -225,6 +225,39 @@ def api_analyze_host(req: AnalyzeHostRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/export-json/{host_id}")
+def api_export_json(host_id: str):
+    """Exports all host properties as a unified JSON structure."""
+    from jass.db.database import SessionLocal
+    from jass.db.models import HostPropertyValue, HostProperty
+    
+    analyzer = get_or_create_analyzer()
+    try:
+        hosts = analyzer.list_hosts(search=host_id)
+        if not hosts:
+            db_host_id = host_id
+        else:
+            db_host_id = hosts[0].get("hostid", host_id)
+            
+        db = SessionLocal()
+        try:
+            props = db.query(HostProperty).all()
+            prop_map = {p.id: p.name for p in props}
+            
+            values = db.query(HostPropertyValue).filter_by(host_id=str(db_host_id)).all()
+            
+            export_data = {"host_id": str(db_host_id), "host_name_query": host_id}
+            for v in values:
+                p_name = prop_map.get(v.property_id)
+                if p_name:
+                    export_data[p_name] = v.value
+                    
+            return export_data
+        finally:
+            db.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/save")
 def api_save_payload(req: SavePayloadRequest):
     """Saves analysis payload as [host_name]_analysis.json."""

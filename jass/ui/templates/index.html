@@ -1,6 +1,16 @@
 <!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
+    <script>
+        window.onerror = function(msg, url, line, col, error) {
+            fetch("/api/status", { method: "POST", body: JSON.stringify({error: msg, line: line, col: col, stack: error ? error.stack : ""}) });
+            console.error("GLOBAL ERROR:", msg, line, col, error);
+        };
+        window.onunhandledrejection = function(event) {
+            fetch("/api/status", { method: "POST", body: JSON.stringify({unhandled: event.reason}) });
+            console.error("UNHANDLED PROMISE:", event.reason);
+        };
+    </script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>JASS - Just Another System Sniffer</title>
@@ -226,9 +236,7 @@
                 <div class="flex flex-col md:flex-row gap-6">
                 <!-- Navigation Tabs (Sidebar) -->
                 <div class="flex flex-col space-y-1 w-full md:w-56 text-sm flex-shrink-0 border-r border-darkborder/50 pr-4" id="dynamic-tabs-nav">
-                    <button onclick="switchTab('tab-overview')" id="btn-tab-overview" class="py-2 pl-2 text-left text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 rounded transition tab-active">
-                        <i class="fa-solid fa-chart-pie mr-2 w-4 text-center"></i>Overview
-                    </button>
+                    
                     <!-- Other tabs will be dynamically injected here via JS -->
                     
                     <hr class="border-darkborder/50 my-3">
@@ -247,192 +255,6 @@
                 <div class="flex-1 min-w-0" id="dynamic-tabs-content">
 
                 <!-- Tab 1: Overview & Storage -->
-                <div id="tab-overview" class="tab-pane space-y-6">
-                    <!-- Detected Roles Banner -->
-                    <div id="detected-roles-box" class="bg-emerald-950/30 border border-emerald-500/30 rounded-xl p-4">
-                        <h4 class="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center space-x-2 mb-2">
-                            <i class="fa-solid fa-fingerprint"></i>
-                            <span>Detected Role Signatures</span>
-                        </h4>
-                        <div id="detected-roles-list" class="flex flex-wrap gap-2"></div>
-                    </div>
-
-                    <!-- Storage Volumes Grid -->
-                    <div class="bg-darkcard border border-darkborder rounded-xl p-5">
-                        <h3 class="text-sm font-bold text-white mb-4 flex items-center space-x-2">
-                            <i class="fa-solid fa-hard-drive text-amber-400"></i>
-                            <span>Storage Drives / Volumes Capacity</span>
-                        </h3>
-                        <div id="drives-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
-                    </div>
-                </div>
-
-                <!-- Tab 2: Disks -->
-                <div id="tab-disks" class="tab-pane hidden space-y-4">
-                    <div class="bg-darkcard border border-darkborder rounded-xl p-5">
-                        <div class="flex items-center justify-between border-b border-darkborder/50 pb-2 mb-3">
-                            <h3 class="text-sm font-bold text-white flex items-center space-x-2">
-                                <i class="fa-solid fa-hard-drive text-orange-400"></i>
-                                <span>Storage Drives</span>
-                            </h3>
-                            <button onclick="triggerSpecificProbe('disk_content_scan')" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded">Scan Folders</button>
-                        </div>
-                        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="drives-grid"></div>
-                        
-                        <div id="disk-folders-container" class="mt-4 text-xs text-slate-400 hidden">
-                            <!-- Folders will be injected here -->
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Tab 2: Windows Services -->
-                <div id="tab-services" class="tab-pane hidden space-y-4">
-                    <div class="bg-darkcard border border-darkborder rounded-xl p-4 flex items-center justify-between">
-                        <div class="relative w-72">
-                            <i class="fa-solid fa-magnifying-glass absolute left-3 top-2.5 text-slate-400 text-xs"></i>
-                            <input type="text" id="svc-filter" oninput="filterServicesTable()" placeholder="Filter services..." 
-                                class="w-full bg-slate-900 border border-darkborder rounded-lg pl-8 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
-                        </div>
-                        <div class="flex items-center space-x-2 text-xs text-slate-400">
-                            <span>Status:</span>
-                            <button onclick="setServiceFilter('all')" class="px-2.5 py-1 bg-slate-800 rounded hover:bg-slate-700 text-white text-[11px]">All</button>
-                            <button onclick="setServiceFilter('Running')" class="px-2.5 py-1 bg-emerald-900/50 text-emerald-300 border border-emerald-700 rounded text-[11px]">Running</button>
-                            <button onclick="setServiceFilter('Stopped')" class="px-2.5 py-1 bg-red-900/50 text-red-300 border border-red-700 rounded text-[11px]">Stopped</button>
-                        </div>
-                    </div>
-
-                    <div class="bg-darkcard border border-darkborder rounded-xl overflow-hidden">
-                        <table class="w-full text-left text-xs">
-                            <thead class="bg-slate-900 text-slate-400 border-b border-darkborder">
-                                <tr>
-                                    <th class="p-3">Service Name</th>
-                                    <th class="p-3">Display Name</th>
-                                    <th class="p-3">State</th>
-                                    <th class="p-3">Startup Type</th>
-                                    <th class="p-3">Zabbix Key</th>
-                                </tr>
-                            </thead>
-                            <tbody id="services-table-body" class="divide-y divide-darkborder/50 text-slate-300"></tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- Tab 3: Hyper-V -->
-                <div id="tab-hyperv" class="tab-pane hidden space-y-4">
-                    <div id="hyperv-warning" class="bg-slate-800 border border-darkborder rounded-xl p-6 text-center text-slate-400">
-                        No active Hyper-V telemetry detected for this host.
-                    </div>
-                    <div id="hyperv-content" class="hidden space-y-4">
-                        <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-4">
-                            <div class="flex items-center justify-between border-b border-darkborder/50 pb-2">
-                                <h3 class="text-sm font-bold text-white flex items-center space-x-2">
-                                    <i class="fa-solid fa-server text-purple-400"></i>
-                                    <span>Virtual Machine Guests (Hyper-V Guest VMs)</span>
-                                </h3>
-                                <div class="relative w-64">
-                                    <i class="fa-solid fa-magnifying-glass absolute left-3 top-2 text-slate-400 text-xs"></i>
-                                    <input type="text" id="vm-filter" oninput="filterVmsGrid()" placeholder="Filter VMs..." 
-                                        class="w-full bg-slate-900 border border-darkborder rounded-lg pl-8 pr-3 py-1 text-xs text-slate-200 focus:outline-none focus:border-brand-500">
-                                </div>
-                            </div>
-                            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="hyperv-vms-grid"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Tab: Inventory -->
-                <div id="tab-inventory" class="tab-pane hidden space-y-4">
-                    <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-3">
-                        <div class="flex items-center justify-between border-b border-darkborder/50 pb-2 mb-2">
-                            <h3 class="text-sm font-bold text-white flex items-center space-x-2">
-                                <i class="fa-solid fa-microchip text-cyan-400"></i>
-                                <span>Hardware & OS Details</span>
-                            </h3>
-                            <button onclick="triggerSpecificProbe('hardware_inventory')" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded">Run Probe</button>
-                        </div>
-                        <div class="text-xs space-y-2 text-slate-300" id="inv-hardware-list">
-                            <!-- Populated via JS -->
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Tab: Groups -->
-                <div id="tab-groups" class="tab-pane hidden space-y-4">
-                    <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-3">
-                        <h3 class="text-sm font-bold text-white mb-2 flex items-center space-x-2">
-                            <i class="fa-solid fa-layer-group text-emerald-400"></i>
-                            <span>Host Groups</span>
-                        </h3>
-                        <div id="inv-groups-list" class="flex flex-wrap gap-2"></div>
-                    </div>
-                </div>
-
-                <!-- Tab: Apps -->
-                <div id="tab-apps" class="tab-pane hidden space-y-4">
-                    <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-4">
-                        <div class="flex items-center justify-between border-b border-darkborder/50 pb-2">
-                            <h3 class="text-sm font-bold text-white flex items-center space-x-2">
-                                <i class="fa-solid fa-box text-blue-400"></i>
-                                <span>Installed Applications</span>
-                            </h3>
-                            <button onclick="triggerSpecificProbe('installed_applications')" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded">Run Probe</button>
-                        </div>
-                        <div id="apps-container" class="text-xs text-slate-400">
-                            No applications data. Run the "installed_applications" remote probe to populate.
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Tab: Ports -->
-                <div id="tab-ports" class="tab-pane hidden space-y-4">
-                    <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-4">
-                        <div class="flex items-center justify-between border-b border-darkborder/50 pb-2">
-                            <h3 class="text-sm font-bold text-white flex items-center space-x-2">
-                                <i class="fa-solid fa-network-wired text-purple-400"></i>
-                                <span>Listening Ports</span>
-                            </h3>
-                            <button onclick="triggerSpecificProbe('listening_ports')" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded">Run Probe</button>
-                        </div>
-                        <div id="ports-container" class="text-xs text-slate-400">
-                            No listening ports data. Run the "listening_ports" remote probe to populate.
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Tab: Events -->
-                <div id="tab-events" class="tab-pane hidden space-y-4">
-                    <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-4">
-                        <div class="flex items-center justify-between border-b border-darkborder/50 pb-2">
-                            <h3 class="text-sm font-bold text-white flex items-center space-x-2">
-                                <i class="fa-solid fa-triangle-exclamation text-red-400"></i>
-                                <span>Recent Event Log Errors (24h)</span>
-                            </h3>
-                            <button onclick="triggerSpecificProbe('event_log_errors')" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-300 px-2 py-1 rounded">Fetch Errors</button>
-                        </div>
-                        <div id="events-container" class="text-xs text-slate-400">
-                            No event log data. Run the "event_log_errors" remote probe to populate.
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Tab: Logins -->
-                <div id="tab-logins" class="tab-pane hidden space-y-4">
-                    <div class="bg-darkcard border border-darkborder rounded-xl p-5 space-y-4">
-                        <div class="flex items-center justify-between border-b border-darkborder/50 pb-2">
-                            <h3 class="text-sm font-bold text-white flex items-center space-x-2">
-                                <i class="fa-solid fa-users text-blue-400"></i>
-                                <span>Recent Logins (7 days)</span>
-                            </h3>
-                            <div class="flex items-center gap-2">
-                                <button onclick="triggerSpecificProbe('recent_logins')" class="text-[10px] bg-brand-600 hover:bg-brand-500 text-white px-3 py-1 rounded font-bold shadow-lg shadow-brand-500/20">Fetch Recent Logins</button>
-                            </div>
-                        </div>
-                        <div id="logins-container" class="text-xs text-slate-400">
-                            No recent logins data. Run the "recent_logins" remote probe to populate.
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Tab 5: Remote Execution (Tasks) -->
                 <div id="tab-remote" class="tab-pane hidden space-y-4">
                     <div class="bg-darkcard border border-darkborder rounded-xl p-5">
@@ -702,10 +524,21 @@ Waiting for configuration or start...
         let currentServiceFilter = 'all';
 
         document.addEventListener('DOMContentLoaded', () => {
-            checkConnectionStatus();
-            loadGroups();
-            loadHosts();
-            loadProbes();
+            try {
+                const hc = document.getElementById('hosts-count');
+                if(hc) hc.innerText = "?";
+                
+                checkConnectionStatus().catch(e => { console.error("conn status err", e); });
+                loadGroups().catch(e => { console.error("groups err", e); });
+                loadHosts().catch(e => { 
+                    const hl = document.getElementById('host-list');
+                    if(hl) hl.innerHTML = "Err: " + e.message;
+                });
+                loadProbes().catch(e => {});
+            } catch (e) {
+                const hl = document.getElementById('host-list');
+                if(hl) hl.innerHTML = "CRITICAL INIT ERROR: " + e.message;
+            }
         });
 
         function showToast(msg, isError = false) {
@@ -1750,7 +1583,7 @@ Waiting for configuration or start...
                 diskHtml = `<div class="flex flex-col border-b border-darkborder/40 pb-1.5"><span class="text-slate-400">Physical Disks:</span><span class="font-semibold text-slate-200 text-[11px]">${dList}</span></div>`;
             }
 
-            invList.innerHTML = `
+            if (invList) invList.innerHTML = `
                 <div class="flex justify-between border-b border-darkborder/40 pb-1.5">
                     <span class="text-slate-400">Hardware / Vendor:</span>
                     <span class="font-semibold text-slate-200">${p.inventory.hardware || p.inventory.vendor || 'N/A'}</span>
@@ -1779,7 +1612,7 @@ Waiting for configuration or start...
 
             const groupsContainer = document.getElementById('inv-groups-list');
             if (groupsContainer) {
-                groupsContainer.innerHTML = '';
+                if (groupsContainer) groupsContainer.innerHTML = '';
                 (p.host_groups || []).forEach(g => {
                     const tag = document.createElement('span');
                     tag.className = 'px-2.5 py-1 bg-slate-900 border border-darkborder rounded-lg text-slate-300 text-[11px] flex items-center gap-1.5';
@@ -1812,7 +1645,8 @@ Waiting for configuration or start...
 
             // Render Apps
             const appsContainer = document.getElementById('apps-container');
-            const apps = unwrapProbeData(cachedHostProbes['installed_applications'], 'installed_applications');
+            if (appsContainer) {
+const apps = unwrapProbeData(cachedHostProbes['installed_applications'], 'installed_applications');
             if (apps) {
                 if (Array.isArray(apps) && apps.length > 0) {
                     let html = '<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">';
@@ -1835,8 +1669,10 @@ Waiting for configuration or start...
             }
 
             // Render Ports
+            }
             const portsContainer = document.getElementById('ports-container');
-            const ports = unwrapProbeData(cachedHostProbes['listening_ports'], 'listening_ports');
+            if (portsContainer) {
+const ports = unwrapProbeData(cachedHostProbes['listening_ports'], 'listening_ports');
             if (ports) {
                 if (Array.isArray(ports) && ports.length > 0) {
                     let html = `
@@ -1873,8 +1709,10 @@ Waiting for configuration or start...
 
 
             // Render Events
+            }
             const eventsContainer = document.getElementById('events-container');
-            const events = unwrapProbeData(cachedHostProbes['event_log_errors'], 'event_log_errors');
+            if (eventsContainer) {
+const events = unwrapProbeData(cachedHostProbes['event_log_errors'], 'event_log_errors');
             if (events) {
                 if (Array.isArray(events) && events.length > 0) {
                     let html = `
@@ -1910,7 +1748,9 @@ Waiting for configuration or start...
             }
 
             // Render Logins
+            }
             const loginsContainer = document.getElementById('logins-container');
+            if (loginsContainer) {
             const logins = unwrapProbeData(cachedHostProbes['recent_logins'], 'recent_logins');
             if (logins) {
                 if (Array.isArray(logins) && logins.length > 0) {
@@ -1933,8 +1773,11 @@ Waiting for configuration or start...
                 }
             }
 
+            }
+
             // Render Disk Content
             const diskFoldersContainer = document.getElementById('disk-folders-container');
+            if (diskFoldersContainer) {
             const folders = unwrapProbeData(cachedHostProbes['disk_content_scan'], 'disk_content_scan');
             if (folders) {
                 diskFoldersContainer.classList.remove('hidden');
@@ -1971,6 +1814,8 @@ Waiting for configuration or start...
                 }
             } else {
                 diskFoldersContainer.classList.add('hidden');
+            }
+
             }
 
             // Remote Execution
@@ -2113,17 +1958,27 @@ Waiting for configuration or start...
             }
         }
 
-        function downloadFullJson() {
-            if (!currentPayload) return;
-            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(currentPayload, null, 2));
-            const dlAnchor = document.createElement('a');
-            dlAnchor.setAttribute("href", dataStr);
-            dlAnchor.setAttribute("download", `${currentPayload.host_name}_analysis.json`);
-            document.body.appendChild(dlAnchor);
-            dlAnchor.click();
-            dlAnchor.remove();
-            showToast(`Downloading ${currentPayload.host_name}_analysis.json...`);
+        async function downloadFullJson() {
+            if (!activeProberHost) return;
+            try {
+                const resp = await fetch(`/api/export-json/${activeProberHost}`);
+                if (!resp.ok) throw new Error('Failed to fetch JSON');
+                const data = await resp.json();
+                const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
+                const dlAnchor = document.createElement('a');
+                dlAnchor.setAttribute("href", dataStr);
+                const hostName = currentPayload ? currentPayload.host_name : activeProberHost;
+                dlAnchor.setAttribute("download", `${hostName}_unified_telemetry.json`);
+                document.body.appendChild(dlAnchor);
+                dlAnchor.click();
+                dlAnchor.remove();
+                showToast(`Downloading unified JSON...`);
+            } catch (e) {
+                showToast(`Error: ${e.message}`, true);
+            }
         }
     </script>
+    <script>setTimeout(() => { if (document.getElementById("host-list") && document.getElementById("host-list").innerHTML.includes("Loading hosts")) { loadHosts(); checkConnectionStatus(); } }, 1000);</script>
 </body>
 </html>
+<script>setTimeout(() => { if (document.getElementById("host-list").innerHTML.includes("Loading hosts")) { loadHosts(); } }, 1000);</script>

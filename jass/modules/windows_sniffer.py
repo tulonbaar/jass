@@ -864,5 +864,50 @@ class WindowsSniffer(BaseSystemSniffer):
             llm_context_hints=llm_hints,
         )
 
+        # Upsert Zabbix telemetry into the database
+        try:
+            from jass.db.database import SessionLocal
+            from jass.db.models import HostProperty, HostPropertyValue
+            import json
+            
+            db = SessionLocal()
+            try:
+                # Map payload fields to property names
+                mappings = {
+                    "zabbix_metadata": {
+                        "host_name": host_name,
+                        "visible_name": visible_name,
+                        "status": status_str,
+                        "host_groups": host_groups,
+                        "tags": [t.model_dump() for t in tags],
+                        "interfaces": [i.model_dump() for i in interfaces]
+                    },
+                    "zabbix_inventory": inventory.model_dump(),
+                    "zabbix_metrics": metrics.model_dump(),
+                    "zabbix_disks": [d.model_dump() for d in metrics.drives] if metrics.drives else [],
+                    "zabbix_roles": llm_hints.get("detected_signatures", []),
+                    "zabbix_services": [s.model_dump() for s in services],
+                    "zabbix_hyperv": [v.model_dump() for v in hyperv.guest_vms] if hyperv and hyperv.guest_vms else []
+                }
+                
+                # Update database
+                for prop_name, prop_val in mappings.items():
+                    prop_obj = db.query(HostProperty).filter_by(name=prop_name).first()
+                    if prop_obj:
+                        val_obj = db.query(HostPropertyValue).filter_by(host_id=host_id, property_id=prop_obj.id).first()
+                        if val_obj:
+                            val_obj.value = prop_val
+                        else:
+                            val_obj = HostPropertyValue(host_id=host_id, property_id=prop_obj.id, value=prop_val)
+                            db.add(val_obj)
+                db.commit()
+            except Exception as inner_err:
+                logger.error(f"Failed to upsert Zabbix properties for {host_name}: {inner_err}")
+                db.rollback()
+            finally:
+                db.close()
+        except Exception as outer_err:
+            logger.error(f"Database unavailable for upsert: {outer_err}")
+
         logger.info(f"Completed analysis for host {host_name}. Detected role signatures: {len(llm_hints.get('detected_signatures', []))}.")
         return payload

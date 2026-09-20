@@ -407,6 +407,15 @@ def seed_db():
             {"name": "disk_content_scan", "display_name": "Disk Folders", "data_type": "json", "display_mode": "table", "category": "hardware"},
             {"name": "rds_info", "display_name": "RDS Info", "data_type": "json", "display_mode": "key_value", "category": "overview"},
             {"name": "recent_logins", "display_name": "Recent Logins", "data_type": "json", "display_mode": "table", "category": "overview"},
+            
+            # Zabbix Telemetry Mappings
+            {"name": "zabbix_metadata", "display_name": "Host Metadata", "data_type": "json", "display_mode": "key_value", "category": "overview"},
+            {"name": "zabbix_inventory", "display_name": "System Inventory", "data_type": "json", "display_mode": "key_value", "category": "overview"},
+            {"name": "zabbix_metrics", "display_name": "Core Metrics", "data_type": "json", "display_mode": "key_value", "category": "overview"},
+            {"name": "zabbix_disks", "display_name": "Zabbix Disks", "data_type": "json", "display_mode": "table", "category": "hardware"},
+            {"name": "zabbix_roles", "display_name": "Detected Roles", "data_type": "json", "display_mode": "badge", "category": "overview"},
+            {"name": "zabbix_services", "display_name": "Windows Services", "data_type": "json", "display_mode": "table", "category": "apps"},
+            {"name": "zabbix_hyperv", "display_name": "Hyper-V VMs", "data_type": "json", "display_mode": "table", "category": "hardware"},
         ]
         for pdata in default_properties:
             cat_name = pdata.pop("category")

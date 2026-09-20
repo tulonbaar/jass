@@ -63,14 +63,33 @@
     </header>
 
     <div class="flex border-b border-darkborder mb-6">
-        <button class="tab-btn active" onclick="switchTab('tab-cat')"><i class="fa-solid fa-folder-tree mr-2"></i>Categories</button>
+        <button class="tab-btn active" onclick="switchTab('tab-tree')"><i class="fa-solid fa-sitemap mr-2"></i>Data Lineage</button>
+        <button class="tab-btn" onclick="switchTab('tab-cat')"><i class="fa-solid fa-folder-tree mr-2"></i>Categories</button>
         <button class="tab-btn" onclick="switchTab('tab-prop')"><i class="fa-solid fa-list-ul mr-2"></i>Properties</button>
         <button class="tab-btn" onclick="switchTab('tab-parser')"><i class="fa-solid fa-code mr-2"></i>Parsers</button>
         <button class="tab-btn" onclick="switchTab('tab-task')"><i class="fa-solid fa-terminal mr-2"></i>Tasks</button>
     </div>
 
+    <!-- Tree View -->
+    <div id="tab-tree" class="tab-content block">
+        <div class="bg-darkcard border border-darkborder rounded-xl p-6 shadow-xl">
+            <div class="flex justify-between items-center mb-6 border-b border-darkborder pb-4">
+                <div>
+                    <h2 class="text-xl font-bold text-white flex items-center gap-2">
+                        <i class="fa-solid fa-sitemap text-brand-400"></i>
+                        Data Lineage Explorer
+                    </h2>
+                    <p class="text-xs text-slate-400 mt-1">Hierarchical view of Categories, Properties, and their Data Sources (Prober tasks / Zabbix).</p>
+                </div>
+                <button onclick="renderTree()" class="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 rounded-lg text-slate-300 border border-darkborder"><i class="fa-solid fa-rotate-right mr-1"></i>Refresh</button>
+            </div>
+            <div id="tree-container" class="space-y-4">
+            </div>
+        </div>
+    </div>
+
     <!-- Categories -->
-    <div id="tab-cat" class="tab-content grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <div id="tab-cat" class="tab-content grid grid-cols-1 lg:grid-cols-2 gap-8 hidden">
         <div class="bg-darkcard border border-darkborder rounded-xl p-6 shadow-xl h-fit">
             <h2 class="text-lg font-bold mb-6 border-b border-darkborder pb-2" id="cat-form-title">Create New Category</h2>
             <form id="form-category" class="space-y-4" onsubmit="submitCategory(event)">
