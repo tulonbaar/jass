@@ -183,7 +183,7 @@ def execute_zabbix_script(req: ExecuteScriptRequest, db: Session = Depends(get_d
         if parser:
             try:
                 local_env = {}
-                exec(parser.code, {}, local_env)
+                exec(parser.code, local_env)
                 if "parse" in local_env:
                     parsed_output = local_env["parse"](output)
             except Exception as e:
