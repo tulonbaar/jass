@@ -515,8 +515,22 @@
                                 }
                             }
                         }
+                        let foundZscript = null;
+                        if (!foundTask) {
+                            for (const zscript of (state.zscripts || [])) {
+                                if (zscript.parser_id) {
+                                    const parser = state.parsers.find(p => p.id === zscript.parser_id);
+                                    if (parser && parser.code.includes(`"${prop.name}"`)) {
+                                        foundZscript = zscript.name;
+                                        break;
+                                    }
+                                }
+                            }
+                        }
                         if (foundTask) {
                             sourceHtml = `<span class="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-[10px] font-bold" title="Mapped via Prober output JSON"><i class="fa-solid fa-terminal mr-1"></i>Prober Task: ${foundTask}</span>`;
+                        } else if (foundZscript) {
+                            sourceHtml = `<span class="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-[10px] font-bold" title="Mapped via Zabbix Script output JSON"><i class="fa-solid fa-terminal mr-1"></i>Zabbix Script: ${foundZscript}</span>`;
                         } else {
                             sourceHtml = `<span class="px-2 py-0.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded text-[10px] font-bold" title="No matching Zabbix metric or Prober task"><i class="fa-solid fa-link-slash mr-1"></i>Unmapped / Custom API</span>`;
                         }
@@ -604,8 +618,22 @@
                             }
                         }
                     }
+                    let foundZscript = null;
+                    if (!foundTask) {
+                        for (const zscript of (state.zscripts || [])) {
+                            if (zscript.parser_id) {
+                                const parser = state.parsers.find(pa => pa.id === zscript.parser_id);
+                                if (parser && parser.code.includes(`"${p.name}"`)) {
+                                    foundZscript = zscript.name;
+                                    break;
+                                }
+                            }
+                        }
+                    }
                     if (foundTask) {
                         sourceHtml = `<span class="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded text-[9px] font-bold mt-1 inline-block border border-emerald-500/30">PROBER: ${foundTask}</span>`;
+                    } else if (foundZscript) {
+                        sourceHtml = `<span class="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded text-[9px] font-bold mt-1 inline-block border border-emerald-500/30">ZSCRIPT: ${foundZscript}</span>`;
                     } else {
                         sourceHtml = `<span class="px-1.5 py-0.5 bg-slate-700/50 text-slate-400 rounded text-[9px] font-bold mt-1 inline-block border border-slate-600">UNMAPPED</span>`;
                     }
