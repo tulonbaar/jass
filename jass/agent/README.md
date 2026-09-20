@@ -57,11 +57,11 @@ GOOS=windows GOARCH=386 go build -ldflags="-s -w" -o jass/ui/static/prober-x86.e
 On the destination Windows machine (PowerShell or CMD):
 
 ```powershell
-.\prober.exe --port 8443 --ttl 3600 --psk "YOUR_PRE_SHARED_KEY"
+.\prober.exe --port 10052 --ttl 3600 --psk "YOUR_PRE_SHARED_KEY"
 ```
 
 Parameters:
-- `--port`: TCP port to listen on (default: `8443`).
+- `--port`: TCP port to listen on (default: `10052`).
 - `--ttl`: Time to live in seconds before self-termination (default: `3600`).
 - `--psk`: 32-character pre-shared encryption key configured in JASS (required).
 

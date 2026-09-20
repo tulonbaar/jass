@@ -60,7 +60,7 @@ def log_host_event(host_identifier: str, message: str):
 
 class ManualStartRequest(BaseModel):
     host_identifier: str
-    port: int = 8443
+    port: int = 10052
     ttl: int = 3600
     psk: Optional[str] = None
 

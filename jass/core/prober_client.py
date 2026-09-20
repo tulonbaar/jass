@@ -23,16 +23,19 @@ class ProberClient:
         config = self.db.query(ProberHostConfig).filter_by(host_id=self.host_id).first()
         if not config:
             psk = secrets.token_hex(16)
-            config = ProberHostConfig(host_id=self.host_id, port=8443, psk=psk)
+            config = ProberHostConfig(host_id=self.host_id, port=10052, psk=psk)
             self.db.add(config)
             self.db.commit()
         return config
+
+    def get_config(self) -> Optional[ProberHostConfig]:
+        return self.db.query(ProberHostConfig).filter_by(host_id=self.host_id).first()
 
     def close(self):
         if not self._external_db and self.db:
             self.db.close()
 
-    def update_psk(self, psk: str, ttl: int, port: int = 8443):
+    def update_psk(self, psk: str, ttl: int, port: int = 10052):
         self.config.psk = psk
         self.config.ttl_seconds = ttl
         self.config.port = port

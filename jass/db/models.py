@@ -104,7 +104,7 @@ class ProberHostConfig(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     host_id = Column(String, unique=True, index=True) # Powiązanie z host.hostid z Zabbixa
-    port = Column(Integer, default=8443)
+    port = Column(Integer, default=10052)
     psk = Column(String) # Losowy PSK wygenerowany do połączenia
     ttl_seconds = Column(Integer, default=3600)  # Czas życia efemerycznego agenta (np. 1 godzina)
     is_active = Column(Boolean, default=False)

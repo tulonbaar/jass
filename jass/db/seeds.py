@@ -33,7 +33,7 @@ _PS_POLYFILL = (
     "} }; "
 )
 
-_PS_PREAMBLE = _PS_POLYFILL + "$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='SilentlyContinue';"
+_PS_PREAMBLE = _PS_POLYFILL + "function Out-JassData { param($String) Write-Output ([Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($String))) }; $ProgressPreference='SilentlyContinue'; $ErrorActionPreference='SilentlyContinue';"
 
 _PARSER_PREAMBLE = r'''
 import json
@@ -52,11 +52,21 @@ def _extract_json_fragment(text: str):
 
 def _safe_json_loads(text: str):
     # PowerShell console host sometimes hard-wraps stdout at 80 or 120 columns.
-    # Since all our probes use ConvertTo-Json -Compress, intentional newlines
-    # in data (e.g. event logs) are escaped as literal '\n'. Thus, any actual
-    # \r or \n characters in the raw output are purely from console wrapping 
-    # and can be safely stripped to reconstruct the valid JSON string.
-    text_clean = text.replace('\r', '').replace('\n', '')
+    # We strip literal newlines to counteract this console wrapping.
+    text_clean = text.replace('\\r', '').replace('\\n', '')
+    
+    # Try decoding as Base64 first to completely bypass OS/Go encoding corruption
+    try:
+        import base64
+        decoded_bytes = base64.b64decode(text_clean, validate=True)
+        decoded_str = decoded_bytes.decode('utf-8')
+        frag = _extract_json_fragment(decoded_str)
+        if frag:
+            return json.loads(frag)
+    except Exception:
+        pass
+
+    # Fallback to plain JSON parsing
     frag = _extract_json_fragment(text_clean)
     if not frag:
         return None
@@ -231,7 +241,7 @@ PROBES = [
         "command": (
             _PS_PREAMBLE + " "
             "$c = Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue; "
-            "if ($c) { $res = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue; if ($res) { $res = @($res | Select-Object LocalAddress,LocalPort,OwningProcess,@{N='Process';E={(Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName}}); ConvertTo-Json -InputObject $res -Compress; exit 0 } }; "
+            "if ($c) { $res = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue; if ($res) { $res = @($res | Select-Object LocalAddress,LocalPort,OwningProcess,@{N='Process';E={(Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName}}); Out-JassData (ConvertTo-Json -InputObject $res -Compress); exit 0 } }; "
             "$ports = netstat -ano -p tcp | Where-Object { $_ -match '(?i)LISTEN|NAS.UCH' }; "
             "$out = @(); "
             "foreach ($p in $ports) { "
@@ -248,7 +258,7 @@ PROBES = [
             "    } "
             "  } "
             "}; "
-            "if ($out.Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject $out -Compress }; exit 0"
+            "if ($out.Count -eq 0) { Out-JassData '[]' } else { Out-JassData (ConvertTo-Json -InputObject $out -Compress) }; exit 0"
         )
     },
     {
@@ -264,7 +274,7 @@ PROBES = [
             "$nics = @(&$getCim Win32_NetworkAdapter | Where-Object { $_.NetConnectionStatus -eq 2 } | Select-Object Name, MACAddress, Speed); "
             "$disks = @(&$getCim Win32_DiskDrive | Select-Object Model, Size, InterfaceType); "
             "$res = New-Object PSObject -Property @{SerialNumber=$bios.SerialNumber; Manufacturer=$cs.Manufacturer; Model=$cs.Model; CPUs=$cpus; RAM_GB=$ram; NICs=$nics; Disks=$disks; MacAddresses=@($nics | ForEach-Object { $_.MACAddress })}; "
-            "ConvertTo-Json -InputObject $res -Depth 4 -Compress; exit 0"
+            "Out-JassData (ConvertTo-Json -InputObject $res -Depth 4 -Compress); exit 0"
         )
     },
     {
@@ -275,7 +285,7 @@ PROBES = [
             "$paths = 'HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*','HKLM:\\Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\*'; "
             "$apps = @(Get-ItemProperty $paths -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName } | "
             "Select-Object DisplayName,DisplayVersion,Publisher,InstallDate,InstallLocation | Sort-Object DisplayName); "
-            "if ($apps.Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject $apps -Compress }; exit 0"
+            "if ($apps.Count -eq 0) { Out-JassData '[]' } else { Out-JassData (ConvertTo-Json -InputObject $apps -Compress) }; exit 0"
         )
     },
     {
@@ -298,7 +308,7 @@ PROBES = [
             "    } "
             "  } "
             "}; "
-            "if ($events.Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject $events -Compress -Depth 3 }; exit 0"
+            "if ($events.Count -eq 0) { Out-JassData '[]' } else { Out-JassData (ConvertTo-Json -InputObject $events -Compress -Depth 3) }; exit 0"
         )
     },
     {
@@ -311,7 +321,7 @@ PROBES = [
             "Get-PSDrive -PSProvider FileSystem | ForEach-Object { $d = $_.Root; "
             "Get-ChildItem -Path $d -ErrorAction SilentlyContinue | Where-Object { $_.PSIsContainer } | ForEach-Object { "
             "$subs = ''; try { $subs = ([System.IO.Directory]::GetDirectories($_.FullName) | ForEach-Object { [System.IO.Path]::GetFileName($_) }) -join ', ' } catch {}; $out += New-Object PSObject -Property @{Drive=$d;Folder=$_.Name;Standard=($known -contains $_.Name);Subfolders=$subs} } }; "
-            "if ($out.Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject $out -Compress }; exit 0"
+            "if ($out.Count -eq 0) { Out-JassData '[]' } else { Out-JassData (ConvertTo-Json -InputObject $out -Compress) }; exit 0"
         )
     },
     {
@@ -325,7 +335,7 @@ PROBES = [
             "$enabled = $false; if ($ts -and $ts.fDenyTSConnections -ne $null) { $enabled = ($ts.fDenyTSConnections -eq 0) }; "
             "$port = 3389; if ($rdp -and $rdp.PortNumber -ne $null) { $port = [int]$rdp.PortNumber }; "
             "$res = New-Object PSObject -Property @{TSEnabled=$enabled;Port=$port;Sessions=$qwinsta}; "
-            "ConvertTo-Json -InputObject $res -Compress; exit 0"
+            "Out-JassData (ConvertTo-Json -InputObject $res -Compress); exit 0"
         )
     },
     {
@@ -349,7 +359,7 @@ PROBES = [
             "    } "
             "  } } "
             "}; "
-            "if ($matched.Count -gt 0) { $res = @($matched | Group-Object User | Select-Object Name, Count); ConvertTo-Json -InputObject $res -Compress } else { '[]' }; exit 0"
+            "if ($matched.Count -gt 0) { $res = @($matched | Group-Object User | Select-Object Name, Count); Out-JassData (ConvertTo-Json -InputObject $res -Compress) } else { Out-JassData '[]' }; exit 0"
         )
     }
 ]

@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	portFlag = flag.Int("port", 8443, "Port to listen on")
+	portFlag = flag.Int("port", 10052, "Port to listen on")
 	ttlFlag  = flag.Int("ttl", 3600, "Time to live in seconds")
 	pskFlag  = flag.String("psk", "", "Pre-shared key")
 
