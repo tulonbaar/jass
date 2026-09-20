@@ -68,6 +68,23 @@ class ProberClient:
 
         try:
             return decrypt_payload(resp.content, self.config.psk)
+            res = decrypt_payload(resp.content, self.config.psk)
+            import base64
+            for field in ('stdout', 'stderr'):
+                b64_field = f"{field}_b64"
+                if b64_field in res and res[b64_field]:
+                    try:
+                        raw_bytes = base64.b64decode(res[b64_field])
+                        try:
+                            res[field] = raw_bytes.decode('utf-8')
+                        except UnicodeDecodeError:
+                            try:
+                                res[field] = raw_bytes.decode('cp852')
+                            except UnicodeDecodeError:
+                                res[field] = raw_bytes.decode('cp1250', errors='replace')
+                    except Exception as e:
+                        logger.warning(f"Failed to decode {b64_field}: {e}")
+            return res
         except Exception as e:
             logger.error(f"Failed to decrypt/parse prober response: {e}")
             raise Exception(f"Failed to decrypt/parse prober response: {e}")
