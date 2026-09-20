@@ -18,3 +18,5 @@ jass.db
 
 ## VS Code
 .vscode/
+# Temporary agent scripts
+temp/

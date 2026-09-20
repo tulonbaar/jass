@@ -151,7 +151,7 @@ class HostAnalysisPayload(BaseModel):
     host_name: str
     visible_name: str
     status: str  # Monitored, Unmonitored
-    host_groups: List[str] = Field(default_factory=list)
+    host_groups: List[Dict[str, str]] = Field(default_factory=list)
     tags: List[HostTag] = Field(default_factory=list)
     interfaces: List[HostInterface] = Field(default_factory=list)
     

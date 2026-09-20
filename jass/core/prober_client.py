@@ -1,3 +1,5 @@
+import os
+from jass.core.settings import get_setting
 import requests
 import json
 import secrets
@@ -59,7 +61,7 @@ class ProberClient:
                 url, 
                 data=encrypted_req, 
                 headers={'Content-Type': 'application/octet-stream'},
-                timeout=30
+                timeout=int(get_setting('PROBER_EXECUTION_TIMEOUT', 600))
             )
             resp.raise_for_status()
         except requests.RequestException as e:

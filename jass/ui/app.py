@@ -7,14 +7,18 @@ from __future__ import annotations
 
 import logging
 import os
+from dotenv import load_dotenv
+load_dotenv(override=True)
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Depends
+from jass.ui.routers_zabbix_scripts import router as zabbix_scripts_router
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from jass.db.database import init_db, SessionLocal
+from jass.db.database import init_db, SessionLocal, get_db
+from sqlalchemy.orm import Session
 import json
 
 from pydantic import BaseModel
@@ -33,12 +37,29 @@ app = FastAPI(
     version="1.0.0",
 )
 
+app.include_router(zabbix_scripts_router)
+
 from jass.db.seeds import seed_db
 
 @app.on_event("startup")
 def on_startup():
     init_db()
     seed_db()
+    
+    from jass.core.settings import get_setting
+    state["zabbix_url"] = get_setting("ZABBIX_URL", "")
+    state["api_token"] = get_setting("ZABBIX_API_TOKEN", "")
+    state["username"] = get_setting("ZABBIX_USER", "")
+    state["password"] = get_setting("ZABBIX_PASSWORD", "")
+    state["verify_ssl"] = get_setting("ZABBIX_VERIFY_SSL", "true").lower() == "true"
+    
+    # Setup logging level
+    import logging
+    log_level = get_setting("LOG_LEVEL", "INFO").upper()
+    numeric_level = getattr(logging, log_level, logging.INFO)
+    logging.getLogger().setLevel(numeric_level)
+    logging.getLogger("jass").setLevel(numeric_level)
+
 
 
 from fastapi.staticfiles import StaticFiles
@@ -64,13 +85,13 @@ app.include_router(host_properties.router)
 # Global session state and cache
 state: Dict[str, Any] = {
     "analyzer": None,
-    "zabbix_url": os.getenv("ZABBIX_URL", ""),
-    "api_token": os.getenv("ZABBIX_API_TOKEN") or os.getenv("ZABBIX_TOKEN", ""),
-    "username": os.getenv("ZABBIX_USER") or os.getenv("ZABBIX_USERNAME", ""),
-    "password": os.getenv("ZABBIX_PASSWORD", ""),
+    "zabbix_url": "",
+    "api_token": "",
+    "username": "",
+    "password": "",
     "verify_ssl": True,
-    "cached_payloads": {},  # host_id -> HostAnalysisPayload
-}
+    "cached_payloads": {},
+}  # host_id -> HostAnalysisPayload
 
 
 class ConnectRequest(BaseModel):
@@ -86,6 +107,7 @@ class AnalyzeHostRequest(BaseModel):
     run_remote_probe: bool = False
     script_name: Optional[str] = None
     probe_key: Optional[str] = None
+    zscript_id: Optional[int] = None
 
 
 class SavePayloadRequest(BaseModel):
@@ -173,12 +195,42 @@ def api_connect(req: ConnectRequest):
 
 
 @app.get("/api/groups")
-def api_groups():
-    """Retrieves list of host groups."""
+def api_groups(db: Session = Depends(get_db)):
+    """Retrieves list of host groups from DB, filtered by Zabbix Host Groups setting."""
+    from jass.db.models import ZabbixHostGroup, SystemSetting
+    groups = db.query(ZabbixHostGroup).all()
+    
+    setting = db.query(SystemSetting).filter_by(key="zabbix_host_groups").first()
+    if setting and setting.value:
+        allowed = {g.strip() for g in setting.value.split(",") if g.strip()}
+        if allowed:
+            groups = [g for g in groups if g.groupid in allowed]
+            
+    return {"groups": [{"groupid": g.groupid, "name": g.name} for g in groups]}
+
+@app.get("/api/admin/groups")
+def api_admin_groups(db: Session = Depends(get_db)):
+    """Retrieves ALL host groups from DB for the admin panel settings."""
+    from jass.db.models import ZabbixHostGroup
+    groups = db.query(ZabbixHostGroup).all()
+    return {"groups": [{"groupid": g.groupid, "name": g.name} for g in groups]}
+
+@app.post("/api/admin/sync-groups")
+def sync_groups(db: Session = Depends(get_db)):
+    """Syncs host groups from Zabbix API to DB."""
+    from jass.db.models import ZabbixHostGroup
     analyzer = get_or_create_analyzer()
     try:
         groups = analyzer.list_hostgroups()
-        return {"groups": groups}
+        # Upsert
+        existing = {g.groupid: g for g in db.query(ZabbixHostGroup).all()}
+        for g in groups:
+            if g["groupid"] in existing:
+                existing[g["groupid"]].name = g["name"]
+            else:
+                db.add(ZabbixHostGroup(groupid=g["groupid"], name=g["name"]))
+        db.commit()
+        return {"status": "ok", "count": len(groups)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -186,9 +238,24 @@ def api_groups():
 @app.get("/api/hosts")
 def api_hosts(group_id: Optional[str] = None, search: Optional[str] = None):
     """Retrieves list of hosts."""
+    from jass.db.database import SessionLocal
+    from jass.db.models import SystemSetting
+    
     analyzer = get_or_create_analyzer()
     try:
-        group_ids = [group_id] if group_id else None
+        if group_id:
+            group_ids = [group_id]
+        else:
+            db = SessionLocal()
+            try:
+                setting = db.query(SystemSetting).filter_by(key="zabbix_host_groups").first()
+                if setting and setting.value:
+                    group_ids = [g.strip() for g in setting.value.split(",") if g.strip()]
+                else:
+                    group_ids = None
+            finally:
+                db.close()
+                
         hosts = analyzer.list_hosts(group_ids=group_ids, search=search)
         return {"hosts": hosts}
     except Exception as e:
@@ -307,3 +374,4 @@ def start_ui_server(
     state["verify_ssl"] = verify_ssl
 
     uvicorn.run(app, host=host, port=port, log_level="info")
+

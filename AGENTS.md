@@ -183,3 +183,4 @@ If asked to enable direct LLM execution (e.g. automatically querying OpenAI / An
 3. **Docstrings**: Use clear Google-style or Sphinx-style docstrings in English for all public functions, classes, and methods.
 4. **Data Integrity**: Never modify raw Zabbix API item keys destructively; preserve raw keys in `.raw_attributes` or `.raw_items_sample` for debugging.
 5. **No Hardcoded Secrets**: Always load credentials from environment variables (`.env`) or CLI arguments.
+6. **Temporary Files**: All temporary scripts, generated code snippets, backups, or helper files created during interactions MUST be placed in the `temp/` folder. This folder is added to `.gitignore`. Do not create temporary files in the root directory.

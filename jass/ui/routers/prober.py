@@ -3,11 +3,12 @@ from collections import defaultdict
 from datetime import datetime
 import logging
 import os
+from jass.core.settings import get_setting
 import secrets
 import time
 import requests
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, Any, List, Dict, Tuple
 from jass.core.prober_crypto import encrypt_payload, decrypt_payload
 from jass.core.prober_client import ProberClient
@@ -60,8 +61,8 @@ def log_host_event(host_identifier: str, message: str):
 
 class ManualStartRequest(BaseModel):
     host_identifier: str
-    port: int = 10052
-    ttl: int = 3600
+    port: int = Field(default_factory=lambda: int(get_setting('PROBER_DEFAULT_PORT', 10052)))
+    ttl: int = Field(default_factory=lambda: max(1800, int(get_setting('PROBER_DEFAULT_TTL', 1800))))
     psk: Optional[str] = None
 
 class ExecuteTaskRequest(BaseModel):
@@ -85,13 +86,14 @@ def manual_start_prober(req: ManualStartRequest, request: Request):
             raise HTTPException(status_code=400, detail="Host has no IP interfaces")
         
         psk = req.psk.strip() if req.psk and req.psk.strip() else secrets.token_hex(16)
+        req.ttl = max(1800, req.ttl)
         
         jass_url = os.environ.get("JASS_BASE_URL", "").rstrip("/") or str(request.base_url).rstrip("/")
         
         # Save config in DB
         client = ProberClient(host_id=host_info["hostid"], host_ip=target_ip)
         try:
-            client.update_psk(psk, req.ttl, req.port)
+            client.update_psk(psk, max(1800, req.ttl), req.port)
         finally:
             client.close()
         

@@ -1,3 +1,4 @@
+import os
 from fastapi import APIRouter, HTTPException, Depends
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
@@ -13,6 +14,7 @@ class CategoryCreate(BaseModel):
     display_name: str
     order: int = 0
     icon: Optional[str] = "fa-folder"
+    property_ids: Optional[List[int]] = []
 
 class PropertyCreate(BaseModel):
     name: str
@@ -43,9 +45,15 @@ def get_categories(db: Session = Depends(get_db)):
 
 @router.post("/categories")
 def create_category(cat: CategoryCreate, db: Session = Depends(get_db)):
-    obj = PropertyCategory(**cat.model_dump())
+    data = cat.model_dump()
+    prop_ids = data.pop("property_ids", [])
+    obj = PropertyCategory(**data)
     db.add(obj)
     db.commit()
+    db.refresh(obj)
+    if prop_ids:
+        db.query(HostProperty).filter(HostProperty.id.in_(prop_ids)).update({"category_id": obj.id}, synchronize_session=False)
+        db.commit()
     return obj
 
 @router.get("/properties")
@@ -115,9 +123,16 @@ def delete_category(id: int, db: Session = Depends(get_db)):
 def update_category(id: int, cat: CategoryCreate, db: Session = Depends(get_db)):
     obj = db.get(PropertyCategory, id)
     if not obj: raise HTTPException(404)
-    for key, val in cat.model_dump().items():
+    data = cat.model_dump()
+    prop_ids = data.pop("property_ids", None)
+    for key, val in data.items():
         setattr(obj, key, val)
+    if prop_ids is not None:
+        db.query(HostProperty).filter(HostProperty.category_id == id).update({"category_id": None}, synchronize_session=False)
+        if prop_ids:
+            db.query(HostProperty).filter(HostProperty.id.in_(prop_ids)).update({"category_id": id}, synchronize_session=False)
     db.commit()
+    db.refresh(obj)
     return obj
 
 @router.delete("/properties/{id}")
@@ -185,3 +200,69 @@ def update_parser(id: int, parser: ParserCreate, db: Session = Depends(get_db)):
         setattr(obj, key, val)
     db.commit()
     return obj
+
+
+class AppSettings(BaseModel):
+    zabbix_url: str = ""
+    zabbix_api_token: str = ""
+    zabbix_user: str = ""
+    zabbix_password: str = ""
+    zabbix_timeout: int = 15
+    zabbix_verify_ssl: bool = True
+    zabbix_host_groups: str = ""
+    prober_default_port: int = 10052
+    prober_default_ttl: int = 1800
+    prober_execution_timeout: int = 600
+    log_level: str = "INFO"
+
+@router.get("/settings", response_model=AppSettings)
+def get_settings():
+    from jass.core.settings import get_setting
+    return AppSettings(
+        zabbix_url=get_setting("ZABBIX_URL", ""),
+        zabbix_api_token=get_setting("ZABBIX_API_TOKEN", ""),
+        zabbix_user=get_setting("ZABBIX_USER", ""),
+        zabbix_password=get_setting("ZABBIX_PASSWORD", ""),
+        zabbix_timeout=int(get_setting("ZABBIX_TIMEOUT", 15)),
+        zabbix_verify_ssl=get_setting("ZABBIX_VERIFY_SSL", "true").lower() == "true",
+        zabbix_host_groups=get_setting("zabbix_host_groups", ""),
+        prober_default_port=int(get_setting("PROBER_DEFAULT_PORT", 10052)),
+        prober_default_ttl=int(get_setting("PROBER_DEFAULT_TTL", 1800)),
+        prober_execution_timeout=int(get_setting("PROBER_EXECUTION_TIMEOUT", 600)),
+        log_level=get_setting("LOG_LEVEL", "INFO")
+    )
+
+@router.post("/settings")
+def update_settings(settings: AppSettings):
+    from jass.core.settings import set_setting
+    
+    set_setting("ZABBIX_URL", settings.zabbix_url)
+    set_setting("ZABBIX_API_TOKEN", settings.zabbix_api_token)
+    set_setting("ZABBIX_USER", settings.zabbix_user)
+    set_setting("ZABBIX_PASSWORD", settings.zabbix_password)
+    set_setting("ZABBIX_TIMEOUT", str(settings.zabbix_timeout))
+    set_setting("ZABBIX_VERIFY_SSL", "true" if settings.zabbix_verify_ssl else "false")
+    set_setting("zabbix_host_groups", settings.zabbix_host_groups)
+    
+    set_setting("PROBER_DEFAULT_PORT", str(settings.prober_default_port))
+    set_setting("PROBER_DEFAULT_TTL", str(max(1800, settings.prober_default_ttl)))
+    set_setting("PROBER_EXECUTION_TIMEOUT", str(settings.prober_execution_timeout))
+    set_setting("LOG_LEVEL", settings.log_level)
+    
+
+    # Update logger dynamically
+    import logging
+    numeric_level = getattr(logging, settings.log_level.upper(), logging.INFO)
+    logging.getLogger().setLevel(numeric_level)
+    logging.getLogger("jass").setLevel(numeric_level)
+    
+    # Reload analyzer if needed
+    import jass.ui.app as main_app
+    main_app.state["zabbix_url"] = settings.zabbix_url
+    main_app.state["api_token"] = settings.zabbix_api_token
+    main_app.state["username"] = settings.zabbix_user
+    main_app.state["password"] = settings.zabbix_password
+    main_app.state["verify_ssl"] = settings.zabbix_verify_ssl
+    main_app.state["analyzer"] = None # Force re-init on next use
+    
+    return {"success": True}

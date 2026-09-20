@@ -112,3 +112,49 @@ class ProberHostConfig(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class SystemSetting(Base):
+    """Tabela przechowująca globalne ustawienia aplikacji w formacie klucz-wartość."""
+    __tablename__ = "system_settings"
+
+    key = Column(String, primary_key=True, index=True)
+    value = Column(String, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+class ZabbixHostGroup(Base):
+    """Pobrane z Zabbix API grupy hostów."""
+    __tablename__ = "zabbix_host_groups"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    groupid = Column(String, unique=True, index=True)
+    name = Column(String)
+
+class ZabbixScript(Base):
+    """Zadania (skrypty) wysyłane do Zabbix jako Zabbix Scripts."""
+    __tablename__ = "zabbix_scripts"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, unique=True, index=True) 
+    description = Column(String, nullable=True)
+    
+    script_type = Column(Integer, default=0) # 0: Script, 1: IPMI, 2: Telnet, 3: SSH, 4: Global script, 5: Webhook
+    execute_on = Column(Integer, default=1) # 0: agent, 1: server, 2: server (proxy)
+    command = Column(Text)  
+    
+    scope = Column(Integer, default=2) # 1: Action, 2: Manual host, 4: Manual event
+    url = Column(String, nullable=True) # for URL
+    timeout = Column(String, default="30s") # for Webhook
+    parameters = Column(JSON, nullable=True) # for Webhook
+    
+    username = Column(String, nullable=True)
+    password = Column(String, nullable=True)
+    port = Column(String, nullable=True)
+    
+    map_to_properties = Column(Boolean, default=True)
+
+    parser_id = Column(Integer, ForeignKey("prober_parsers.id"), nullable=True)
+    parser = relationship("ProberParser", foreign_keys=[parser_id])
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

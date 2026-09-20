@@ -464,6 +464,58 @@ def seed_db():
                 task.description = probe["description"]
                 task.parser_id = parser.id
         
+        
+        # 4. Zabbix Scripts
+        parser_local_users = db.query(ProberParser).filter_by(name="local_users_parser").first()
+        if not parser_local_users:
+            parser_local_users = ProberParser(
+                name="local_users_parser",
+                description="Parses local users JSON",
+                code='''import json
+import re
+
+def _safe_json_loads(text: str):
+    try:
+        match = re.search(r"(\{.*\}|\[.*\])", text, re.DOTALL)
+        if match:
+            return json.loads(match.group(1))
+        return json.loads(text)
+    except:
+        return None
+
+def parse(output: str):
+    parsed = _safe_json_loads(output)
+    if parsed is None:
+        return {"local_users": []}
+    
+    rows = parsed if isinstance(parsed, list) else [parsed]
+    res = []
+    for row in rows:
+        if isinstance(row, dict):
+            res.append({
+                "username": row.get("Name"),
+                "enabled": row.get("Enabled"),
+                "description": row.get("Description")
+            })
+    return {"local_users": res}'''
+            )
+            db.add(parser_local_users)
+            db.flush()
+
+        from jass.db.models import ZabbixScript
+        zscript = db.query(ZabbixScript).filter_by(name="local_users_scan").first()
+        if not zscript:
+            zscript = ZabbixScript(
+                name="local_users_scan",
+                description="Lists local Windows users via Zabbix Agent",
+                script_type=0,
+                execute_on=0,
+                scope=2,
+                command="powershell -NoProfile -ExecutionPolicy Bypass -Command \"Get-LocalUser | Select-Object Name, Enabled, Description | ConvertTo-Json -Compress\"",
+                parser_id=parser_local_users.id
+            )
+            db.add(zscript)
+
         db.commit()
         print("Database seeded and synchronized successfully.")
 

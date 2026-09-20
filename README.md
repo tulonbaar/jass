@@ -223,6 +223,15 @@ Recommended hybrid approach (used throughout JASS):
 
 ---
 
+cat /tmp/readme-zscripts.txt
+### Zabbix Scripts Management
+JASS includes a complete Zabbix Scripts management interface built into the Admin Panel.
+You can create, edit, and push Zabbix Scripts directly to the Zabbix Server.
+- Set Script Type (Script, IPMI, Telnet, SSH)
+- Define Execute On target (Agent, Server, Proxy)
+- Map outputs automatically to Host Properties via Prober Parsers
+- Filter by Host Groups to scope down your environment
+
 ## 🌐 Web Dashboard (GUI)
 
 Start the interactive web dashboard with:

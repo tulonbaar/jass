@@ -71,11 +71,7 @@
                 <span id="conn-text" class="text-slate-300">Disconnected</span>
             </div>
 
-            <!-- Settings Modal Button -->
-            <button onclick="openSettingsModal()" class="px-3 py-1.5 text-xs bg-slate-800 hover:bg-slate-700 text-slate-200 border border-darkborder rounded-lg transition flex items-center space-x-1.5">
-                <i class="fa-solid fa-gear text-slate-400"></i>
-                <span>Zabbix API Settings</span>
-            </button>
+            
             
             <a href="/admin" class="px-3 py-1.5 text-xs bg-brand-600 hover:bg-brand-500 text-white font-bold border border-brand-500 rounded-lg transition flex items-center space-x-1.5 shadow-lg shadow-brand-500/20">
                 <i class="fa-solid fa-screwdriver-wrench"></i>
@@ -133,10 +129,10 @@
                 <p class="text-slate-400 text-sm max-w-md mb-6">
                     Choose a host from the left sidebar to collect inventory, metrics, services, Hyper-V telemetry, and view detailed telemetry.
                 </p>
-                <button onclick="openSettingsModal()" class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-lg shadow-lg shadow-brand-600/30 transition flex items-center space-x-2">
+                <a href="/admin" class="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-xs font-semibold rounded-lg shadow-lg shadow-brand-600/30 transition flex items-center space-x-2 inline-flex">
                     <i class="fa-solid fa-plug"></i>
                     <span>Configure Zabbix API</span>
-                </button>
+                </a>
             </div>
 
             <!-- Host Details & Telemetry View -->
@@ -287,6 +283,32 @@
                                 <div class="bg-slate-950 font-mono text-xs text-sky-300 p-4 rounded-xl border border-darkborder overflow-x-auto max-h-96" id="remote-probe-parsed"></div>
                             </div>
                         </div>
+                    <!-- Zabbix Scripts Execution -->
+                    <div class="bg-darkcard border border-darkborder rounded-xl p-5 mt-4">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-sm font-bold text-white flex items-center space-x-2">
+                                <i class="fa-solid fa-scroll text-yellow-400"></i>
+                                <span>Zabbix Scripts Execution</span>
+                            </h3>
+                            <div class="flex items-center gap-2">
+                                <select id="zscript-key-select" class="bg-slate-900 border border-darkborder rounded-lg text-xs text-slate-200 px-2 py-1.5">
+                                    <option value="">-- Select Zabbix Script --</option>
+                                </select>
+                                <button onclick="triggerZscript()" class="px-3 py-1.5 bg-yellow-600 hover:bg-yellow-500 text-white rounded-lg text-xs font-semibold">
+                                    Run Zabbix Script
+                                </button>
+                            </div>
+                        </div>
+                        <div id="zscript-exec-container" class="space-y-4">
+                            <div class="bg-slate-950 font-mono text-xs text-emerald-400 p-4 rounded-xl border border-darkborder overflow-x-auto max-h-96" id="zscript-exec-raw">
+                                No script executed yet. Select a script and run it.
+                            </div>
+                            <div>
+                                <h4 class="text-xs font-semibold text-slate-400 mb-2 uppercase tracking-wide">Parsed / Structured Output</h4>
+                                <div class="bg-slate-950 font-mono text-xs text-sky-300 p-4 rounded-xl border border-darkborder overflow-x-auto max-h-96" id="zscript-exec-parsed"></div>
+                            </div>
+                        </div>
+                    </div>
                     </div>
                 </div>
 
@@ -535,6 +557,7 @@ Waiting for configuration or start...
                     if(hl) hl.innerHTML = "Err: " + e.message;
                 });
                 loadProbes().catch(e => {});
+                loadZscripts().catch(e => {});
             } catch (e) {
                 const hl = document.getElementById('host-list');
                 if(hl) hl.innerHTML = "CRITICAL INIT ERROR: " + e.message;
@@ -1056,6 +1079,64 @@ Waiting for configuration or start...
             if (currentPayload) selectAndAnalyzeHost(currentPayload.host_name, true);
         }
 
+        async function loadZscripts() {
+            try {
+                const res = await fetch('/api/zabbix-scripts');
+                if (!res.ok) return;
+                const data = await res.json();
+                const select = document.getElementById('zscript-key-select');
+                if (!select) return;
+                select.innerHTML = '<option value="">-- Select Zabbix Script --</option>';
+                data.forEach(script => {
+                    const opt = document.createElement('option');
+                    opt.value = script.id;
+                    opt.title = script.description || '';
+                    opt.innerText = script.name;
+                    select.appendChild(opt);
+                });
+            } catch (e) {
+                console.error('Failed to load Zabbix scripts', e);
+            }
+        }
+        async function triggerZscript() {
+            if (!currentPayload) {
+                alert("Please select and analyze a host first.");
+                return;
+            }
+            
+            const select = document.getElementById('zscript-key-select');
+            const scriptId = select ? select.value : null;
+            if (!scriptId) {
+                alert("Please select a Zabbix Script to run.");
+                return;
+            }
+            
+            document.getElementById('zscript-exec-raw').innerText = 'Executing Zabbix script... this may take a moment.';
+            document.getElementById('zscript-exec-parsed').innerText = '';
+            
+            try {
+                const res = await fetch('/api/zabbix-scripts/execute', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ script_id: parseInt(scriptId), host_identifier: currentPayload.host_id })
+                });
+                
+                const data = await res.json();
+                if (!res.ok) {
+                    document.getElementById('zscript-exec-raw').innerText = `Error: ${data.detail || 'Unknown error'}`;
+                    return;
+                }
+                
+                document.getElementById('zscript-exec-raw').innerText = data.raw_output || 'No output.';
+                if (data.parsed_output) {
+                    document.getElementById('zscript-exec-parsed').innerText = JSON.stringify(data.parsed_output, null, 2);
+                } else {
+                    document.getElementById('zscript-exec-parsed').innerText = 'No parsed output (no parser or error).';
+                }
+            } catch (e) {
+                document.getElementById('zscript-exec-raw').innerText = `Error executing script: ${e}`;
+            }
+        }
         async function loadProbes() {
             try {
                 const res = await fetch('/api/probes');

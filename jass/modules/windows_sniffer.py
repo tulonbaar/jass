@@ -815,7 +815,7 @@ class WindowsSniffer(BaseSystemSniffer):
 
         # Compatibility for Zabbix <6.2 ("groups") and >=6.2 ("hostgroups")
         raw_grps = host_raw.get("hostgroups", []) or host_raw.get("groups", [])
-        host_groups = [g["name"] for g in raw_grps if "name" in g]
+        host_groups = [{"groupid": g.get("groupid", ""), "name": g.get("name", "")} for g in raw_grps if "name" in g]
         tags = [HostTag(tag=t["tag"], value=t.get("value", "")) for t in host_raw.get("tags", [])]
         interfaces = [
             HostInterface(

@@ -58,26 +58,42 @@
     </style>
 </head>
 <body class="bg-darkbg text-slate-100 min-h-screen flex flex-col font-sans p-6">
-    <header class="mb-4 flex justify-between items-center pb-4">
-        <div>
-            <h1 class="text-2xl font-bold flex items-center gap-2">
-                <i class="fa-solid fa-screwdriver-wrench text-brand-500"></i>
-                JASS Admin Configuration
-            </h1>
-            <p class="text-sm text-slate-400 mt-1">Manage database entities for dynamic property categories and prober tasks.</p>
+    <nav class="bg-darkcard border-b border-darkborder px-6 py-4 mb-6 flex justify-between items-center shadow-md">
+    <div class="flex items-center gap-6">
+        <h1 class="text-xl font-bold flex items-center gap-2 text-white">
+            <i class="fa-solid fa-screwdriver-wrench text-brand-500"></i>
+            JASS Admin Panel
+        </h1>
+        <div class="flex space-x-2 border-l border-darkborder pl-6">
+            <button class="nav-btn active px-4 py-2 text-sm font-medium rounded-md transition-colors text-slate-300 hover:text-white" onclick="switchMainMenu('menu-data')">
+                <i class="fa-solid fa-sitemap mr-2"></i>Data Lineage
+            </button>
+            <button class="nav-btn px-4 py-2 text-sm font-medium rounded-md transition-colors text-slate-300 hover:text-white" onclick="switchMainMenu('menu-settings')">
+                <i class="fa-solid fa-gear mr-2"></i>General App Options
+            </button>
         </div>
-        <a href="/" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg border border-darkborder transition flex items-center space-x-2">
-            <i class="fa-solid fa-arrow-left"></i>
-            <span>Back to Dashboard</span>
-        </a>
-    </header>
+    </div>
+    <a href="/" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium rounded-lg border border-darkborder transition flex items-center space-x-2">
+        <i class="fa-solid fa-arrow-left"></i>
+        <span>Back to Dashboard</span>
+    </a>
+</nav>
 
-    <div class="flex border-b border-darkborder mb-6">
+<style>
+    .nav-btn.active { background-color: #1e293b; color: #22c55e; border: 1px solid #334155; }
+    .main-menu-content { display: none; }
+    .main-menu-content.active { display: block; }
+</style>
+
+
+    <div id="menu-data" class="main-menu-content active">
+<div class="flex border-b border-darkborder mb-6">
         <button class="tab-btn active" onclick="switchTab('tab-tree')"><i class="fa-solid fa-sitemap mr-2"></i>Data Lineage</button>
         <button class="tab-btn" onclick="switchTab('tab-cat')"><i class="fa-solid fa-folder-tree mr-2"></i>Categories</button>
         <button class="tab-btn" onclick="switchTab('tab-prop')"><i class="fa-solid fa-list-ul mr-2"></i>Properties</button>
         <button class="tab-btn" onclick="switchTab('tab-parser')"><i class="fa-solid fa-code mr-2"></i>Parsers</button>
         <button class="tab-btn" onclick="switchTab('tab-task')"><i class="fa-solid fa-terminal mr-2"></i>Tasks</button>
+        <button class="tab-btn" onclick="switchTab('tab-zscripts')"><i class="fa-solid fa-scroll mr-2"></i>Zabbix Scripts</button>
     </div>
 
     <!-- Tree View -->
@@ -135,7 +151,7 @@
                     <div><label class="form-label">Display Name</label><input type="text" id="prop-display" required class="form-input" placeholder="e.g. Domain Role"></div>
                 </div>
                 <div><label class="form-label">Description</label><input type="text" id="prop-desc" class="form-input"></div>
-                <div class="grid grid-cols-3 gap-4">
+                <div class="grid grid-cols-2 gap-4">
                     <div>
                         <label class="form-label">Category</label>
                         <select id="prop-cat" required class="form-select w-full bg-slate-900 border border-darkborder rounded px-2 py-1.5 text-slate-200 focus:outline-none focus:border-brand-500"></select>
@@ -160,10 +176,13 @@
                         </select>
                     </div>
                 </div>
-                <div class="p-3 bg-slate-900/50 border border-darkborder/50 rounded-lg">
+                                <div id="prop-zabbix-wrapper" class="p-3 bg-slate-900/50 border border-darkborder/50 rounded-lg">
                     <label class="form-label text-brand-400"><i class="fa-solid fa-cloud-arrow-down mr-1"></i>Zabbix Mapping Key (Optional)</label>
                     <input type="text" id="prop-zabbix" class="form-input w-full mt-1" placeholder="e.g. system.cpu.util">
                     <p class="text-[10px] text-slate-500 mt-1">If specified, JASS will dynamically populate this property from the Zabbix agent output. To map from a Prober task, ensure the "System Name" matches the JSON key returned by the parser.</p>
+                </div>
+                <div id="prop-zabbix-core-alert" class="hidden p-3 bg-red-900/20 border border-red-500/30 rounded-lg text-xs text-red-400">
+                    <i class="fa-solid fa-circle-info mr-2"></i><strong>Zabbix Core Module:</strong> This property is dynamically populated by the Python Sniffer module using complex heuristics involving multiple Zabbix items simultaneously. Manual mapping keys are disabled.
                 </div>
                 <div class="flex gap-2">
                     <button type="submit" class="flex-1 bg-brand-600 hover:bg-brand-500 text-white font-bold py-2 px-4 rounded text-xs transition" id="prop-submit-btn">Save Property</button>
@@ -187,7 +206,7 @@
                 <div><label class="form-label">Description</label><input type="text" id="parser-desc" class="form-input"></div>
                 <div>
                     <label class="form-label">Python Code (must define def parse(output): )</label>
-                    <textarea id="parser-code" required class="form-input font-mono text-xs" rows="10">def parse(output):
+                    <textarea id="parser-code" class="form-input font-mono text-xs" rows="10">def parse(output):
     import json
     return json.loads(output)</textarea>
                 </div>
@@ -219,7 +238,7 @@
                 <div><label class="form-label">Description</label><input type="text" id="task-desc" class="form-input"></div>
                 <div>
                     <label class="form-label">Powershell Script Content</label>
-                    <textarea id="task-content" required class="form-input font-mono text-xs" rows="8"></textarea>
+                    <textarea id="task-content" class="form-input font-mono text-xs" rows="8"></textarea>
                 </div>
                 <div class="flex items-center">
                     <input type="checkbox" id="task-map" checked class="mr-2"> <label class="text-xs text-slate-300">Map JSON output to Host Properties</label>
@@ -235,12 +254,194 @@
             <input type="text" id="search-task" onkeyup="renderLists()" placeholder="Search Tasks..." class="form-input mb-4"><div id="tasks-list" class="space-y-2 overflow-y-auto max-h-[600px] pr-2"></div>
         </div>
     </div>
+    <!-- Zabbix Scripts -->
+    <div id="tab-zscripts" class="tab-content hidden grid grid-cols-1 lg:grid-cols-2 gap-8">
+        <div class="bg-darkcard border border-darkborder rounded-xl p-6 shadow-xl h-fit">
+            <h2 class="text-lg font-bold mb-6 border-b border-darkborder pb-2" id="zscript-form-title">Create New Zabbix Script</h2>
+            <form id="form-zscript" class="space-y-4" onsubmit="submitZscript(event)">
+                <input type="hidden" id="zscript-id">
+                <div class="grid grid-cols-3 gap-4">
+                    <div><label class="form-label">Name (Must be unique in Zabbix)</label><input type="text" id="zscript-name" required class="form-input" placeholder="e.g. jass-my-script"></div>
+                    <div>
+                        <label class="form-label">Type</label>
+                        <select id="zscript-type" class="form-input">
+                            <option value="0">Script (Custom script)</option>
+                            <option value="1">IPMI</option>
+                            <option value="2">Telnet</option>
+                            <option value="3">SSH</option>
+                            <option value="4">Global script</option>
+                            <option value="5">Webhook</option>
+                        </select>
+                    </div>
 
-    <script>
+                    <div>
+                        <label class="form-label">Scope</label>
+                        <select id="zscript-scope" class="form-input">
+                            <option value="1">Action operation</option>
+                            <option value="2">Manual host action</option>
+                            <option value="4">Manual event action</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="grid grid-cols-3 gap-4">
+                    <div id="zscript-executeon-wrapper">
+                        <label class="form-label">Execute On</label>
+                        <select id="zscript-executeon" class="form-input">
+                            <option value="0">Zabbix agent</option>
+                            <option value="1">Zabbix server</option>
+                            <option value="2">Zabbix server (proxy)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label">Parser</label>
+                        <select id="zscript-parser" class="form-input"><option value="">-- No Parser --</option></select>
+                    </div>
+                </div>
+
+                <div><label class="form-label">Description</label><input type="text" id="zscript-desc" class="form-input"></div>
+                
+
+                <div id="zscript-ssh-fields" class="hidden space-y-4 border border-darkborder p-4 rounded-lg bg-slate-900">
+                    <div class="grid grid-cols-3 gap-4">
+                        <div><label class="form-label">Username</label><input type="text" id="zscript-username" class="form-input"></div>
+                        <div><label class="form-label">Password</label><input type="password" id="zscript-password" class="form-input"></div>
+                        <div><label class="form-label">Port</label><input type="text" id="zscript-port" class="form-input" placeholder="22"></div>
+                    </div>
+                </div>
+                
+                <div id="zscript-url-wrapper" class="hidden space-y-4 border border-darkborder p-4 rounded-lg bg-slate-900">
+                    <div><label class="form-label">URL</label><input type="text" id="zscript-url" class="form-input" placeholder="http://..."></div>
+                </div>
+                
+                <div id="zscript-webhook-fields" class="hidden space-y-4 border border-darkborder p-4 rounded-lg bg-slate-900">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div><label class="form-label">Timeout</label><input type="text" id="zscript-timeout" class="form-input" placeholder="30s"></div>
+                        <div><label class="form-label">Parameters (JSON)</label><input type="text" id="zscript-parameters" class="form-input" placeholder='[{"name": "a", "value": "b"}]'></div>
+                    </div>
+                </div>
+
+
+                <div id="zscript-command-wrapper">
+                    <label class="form-label">Command / Script Content</label>
+                    <textarea id="zscript-command" class="form-input font-mono text-xs" rows="8"></textarea>
+                </div>
+                <div class="flex items-center">
+                    <input type="checkbox" id="zscript-map" checked class="mr-2"> <label class="text-xs text-slate-300">Map JSON output to Host Properties</label>
+                </div>
+                <div class="flex gap-2">
+                    <button type="submit" class="flex-1 bg-brand-600 hover:bg-brand-500 text-white font-bold py-2 px-4 rounded text-xs transition" id="zscript-submit-btn">Save Script to DB</button>
+                    <button type="button" onclick="resetForm('zscript')" class="bg-slate-700 hover:bg-slate-600 text-white font-bold py-2 px-4 rounded text-xs transition">Cancel</button>
+                </div>
+            </form>
+        </div>
+        <div class="bg-darkcard border border-darkborder rounded-xl p-6 shadow-xl">
+            <h2 class="text-lg font-bold mb-6 border-b border-darkborder pb-2">Existing Zabbix Scripts</h2>
+            <input type="text" id="search-zscript" onkeyup="renderLists()" placeholder="Search Scripts..." class="form-input mb-4"><div id="zscripts-list" class="space-y-2 overflow-y-auto max-h-[600px] pr-2"></div>
+        </div>
+    </div>
+
+    
+</div>
+
+<div id="menu-settings" class="main-menu-content">
+    <div class="flex border-b border-darkborder mb-6">
+        <button class="tab-btn active" onclick="switchSettingsTab('tab-zabbix')"><i class="fa-solid fa-cloud mr-2"></i>Zabbix API</button>
+        <button class="tab-btn" onclick="switchSettingsTab('tab-prober')"><i class="fa-solid fa-bolt mr-2"></i>Prober Settings</button>
+    </div>
+
+    <!-- Zabbix Settings -->
+    <div id="tab-zabbix" class="tab-content-settings block">
+        <div class="bg-darkcard border border-darkborder rounded-xl p-6 shadow-xl max-w-3xl">
+            <h2 class="text-lg font-bold mb-6 border-b border-darkborder pb-2">Zabbix API Configuration</h2>
+            <form id="form-zabbix" class="space-y-4" onsubmit="submitSettings(event)">
+                <div>
+                    <label class="form-label">Zabbix API URL</label>
+                    <input type="url" id="set-zabbix-url" class="form-input" placeholder="https://zabbix.example.com/api_jsonrpc.php" required>
+                </div>
+                <div>
+                    <label class="form-label">Zabbix API Token</label>
+                    <input type="password" id="set-zabbix-token" class="form-input" placeholder="Leave empty to use user/password">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="form-label">Username (Fallback)</label>
+                        <input type="text" id="set-zabbix-user" class="form-input">
+                    </div>
+                    <div>
+                        <label class="form-label">Password (Fallback)</label>
+                        <input type="password" id="set-zabbix-pass" class="form-input">
+                    </div>
+                </div>
+                <div class="flex items-center gap-4 mt-2">
+                    <label class="flex items-center space-x-2 text-sm text-slate-300">
+                        <input type="checkbox" id="set-zabbix-ssl" class="form-checkbox text-brand-500 rounded bg-slate-900 border-slate-700">
+                        <span>Verify SSL Certificate</span>
+                    </label>
+                </div>
+                <div>
+                    <label class="form-label">API Timeout (Seconds)</label>
+                    <input type="number" id="set-zabbix-timeout" class="form-input" min="1" max="60">
+                </div>
+                <div class="pt-4 border-t border-darkborder">
+                    <div class="flex justify-between items-center mb-1">
+                        <label class="block text-xs font-semibold text-slate-400">Host Groups Filter</label>
+                        <button type="button" onclick="syncZabbixGroups()" class="text-[10px] bg-slate-800 hover:bg-slate-700 text-brand-400 px-2 py-1 rounded border border-darkborder"><i class="fa-solid fa-rotate-right mr-1"></i>Refresh from Zabbix</button>
+                    </div>
+                    <input type="hidden" id="set-zabbix-groups">
+                    <div id="zabbix-groups-container" class="grid grid-cols-2 md:grid-cols-3 gap-2 max-h-48 overflow-y-auto p-2 bg-slate-900 rounded-lg border border-darkborder">
+                        <span class="text-xs text-slate-500">Loading groups from Zabbix...</span>
+                    </div>
+                    <p class="text-[10px] text-slate-500 mt-1">Select the host groups to fetch. If none selected, all hosts are fetched.</p>
+                </div>
+                <div class="pt-4"><button type="submit" class="bg-brand-600 hover:bg-brand-500 text-white font-bold py-2 px-6 rounded transition">Save Zabbix Settings</button></div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Prober Settings -->
+    <div id="tab-prober" class="tab-content-settings hidden">
+        <div class="bg-darkcard border border-darkborder rounded-xl p-6 shadow-xl max-w-3xl">
+            <h2 class="text-lg font-bold mb-6 border-b border-darkborder pb-2">Prober Configuration</h2>
+            <form id="form-prober" class="space-y-4" onsubmit="submitSettings(event)">
+                <div>
+                    <label class="form-label">Default Prober Port</label>
+                    <input type="number" id="set-prober-port" class="form-input" min="1" max="65535">
+                    <p class="text-xs text-slate-500 mt-1">The port JASS Prober Agent listens on.</p>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="form-label">Default Lifetime (Seconds)</label>
+                        <input type="number" id="set-prober-ttl" class="form-input" min="1800">
+                        <p class="text-xs text-slate-500 mt-1">Cannot be less than 1800s (30m) to avoid conflicts.</p>
+                    </div>
+                    <div>
+                        <label class="form-label">Execution Timeout (Seconds)</label>
+                        <input type="number" id="set-prober-exec" class="form-input" min="1">
+                        <p class="text-xs text-slate-500 mt-1">Recommended: 600s (10m) for long running tasks.</p>
+                    </div>
+                </div>
+                <div class="pt-4 border-t border-darkborder">
+                    <label class="form-label">Application Log Level</label>
+                    <select id="set-log-level" class="form-input">
+                        <option value="DEBUG">DEBUG (Most verbose)</option>
+                        <option value="INFO">INFO</option>
+                        <option value="WARNING">WARNING</option>
+                        <option value="ERROR">ERROR / CRITICAL</option>
+                    </select>
+                    <p class="text-xs text-slate-500 mt-1">Changes are applied immediately.</p>
+                </div>
+                <div class="pt-4"><button type="submit" class="bg-brand-600 hover:bg-brand-500 text-white font-bold py-2 px-6 rounded transition">Save Prober Settings</button></div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
         let state = { categories: [], properties: [], parsers: [], tasks: [] };
 
                 function switchTab(tabId) {
-            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('menu-data').querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(tc => tc.classList.add('hidden'));
             
             const btn = document.querySelector(`button[onclick="switchTab('${tabId}')"]`);
@@ -254,6 +455,9 @@
             }
             if (tabId === 'tab-task' && window.editorTask) {
                 setTimeout(() => window.editorTask.refresh(), 10);
+            }
+            if (tabId === 'tab-zscripts' && window.editors && window.editors['zscript-command']) {
+                setTimeout(() => window.editors['zscript-command'].refresh(), 10);
             }
         }
 
@@ -356,6 +560,10 @@
             if (parserSelect && state.parsers.length > 0 && parserSelect.options.length <= 1) {
                 parserSelect.innerHTML = '<option value="">-- No Parser --</option>' + state.parsers.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
             }
+            const zparserSelect = document.getElementById('zscript-parser');
+            if (zparserSelect && state.parsers.length > 0 && zparserSelect.options.length <= 1) {
+                zparserSelect.innerHTML = '<option value="">-- No Parser --</option>' + state.parsers.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+            }
 
             // Categories
             const filteredCats = state.categories.filter(c => c.name.toLowerCase().includes(searchCat) || c.display_name.toLowerCase().includes(searchCat));
@@ -438,6 +646,29 @@
 
             // Tasks
             const filteredTasks = state.tasks.filter(t => t.name.toLowerCase().includes(searchTask));
+
+            // ZScripts
+            const searchZscript = document.getElementById('search-zscript') ? document.getElementById('search-zscript').value.toLowerCase() : '';
+            const filteredZscripts = (state.zscripts || []).filter(t => t.name.toLowerCase().includes(searchZscript));
+            if(document.getElementById('zscripts-list')) {
+                document.getElementById('zscripts-list').innerHTML = filteredZscripts.map(t => `
+                    <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-darkborder group hover:border-slate-500 transition">
+                        <div>
+                            <div>
+                                <span class="font-bold text-brand-400">${t.name}</span>
+                                <span class="text-[10px] bg-blue-900/50 border border-blue-800 text-blue-300 px-1 rounded ml-1">${t.script_type === 3 ? 'SSH' : 'Script'}</span>
+                                ${t.map_to_properties ? '<span class="text-[10px] bg-emerald-900/50 border border-emerald-800 text-emerald-300 px-1 rounded ml-1">MAPS PROPS</span>' : ''}
+                            </div>
+                            <div class="text-xs text-slate-400">Execute on: ${t.execute_on === 0 ? 'Agent' : t.execute_on === 1 ? 'Server' : 'Proxy'}</div>
+                        </div>
+                        <div class="flex gap-2 items-center">
+                            <button onclick="pushZscriptToZabbix(${t.id})" class="text-brand-500 hover:text-brand-400 text-xs px-2 border border-brand-500/50 rounded flex items-center gap-1 opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-cloud-arrow-up"></i> Push</button>
+                            <button onclick="editItem('zscript', ${t.id})" class="text-blue-400 hover:text-blue-300 text-xs opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-pen"></i></button>
+                            <button onclick="deleteItem('zabbix-scripts', ${t.id})" class="text-red-400 hover:text-red-300 text-xs opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+                `).join('');
+            }
             document.getElementById('tasks-list').innerHTML = filteredTasks.map(t => `
                 <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-darkborder group hover:border-slate-500 transition">
                     <div>
@@ -461,6 +692,7 @@
             state.properties = await apiCall('/api/admin/properties') || [];
             state.parsers = await apiCall('/api/admin/parsers') || [];
             state.tasks = await apiCall('/api/admin/tasks') || [];
+            state.zscripts = await apiCall('/api/zabbix-scripts') || [];
 
             renderTree();
             renderLists();
@@ -473,8 +705,13 @@
             if(titleEl) titleEl.innerText = `Create New ${type.charAt(0).toUpperCase() + type.slice(1)}`;
             const btnEl = document.getElementById(`${type}-submit-btn`);
             if(btnEl) btnEl.innerText = `Save ${type.charAt(0).toUpperCase() + type.slice(1)}`;
-            if(type === 'cat') document.getElementById('cat-icon').value = 'fa-folder';
-            if(type === 'prop') {
+            if(type === 'cat') { document.getElementById('cat-icon').value = 'fa-folder'; document.getElementById('cat-props-list').innerHTML = state.properties.map(p => `<label class='flex items-center space-x-2'><input type='checkbox' class='cat-prop-cb form-checkbox h-3 w-3' value='${p.id}'><span>${p.name}</span></label>`).join(''); }
+            if(type === 'prop') { 
+                document.getElementById('prop-zabbix').value = '';
+                document.getElementById('prop-zabbix-wrapper').classList.remove('hidden');
+                const alertEl = document.getElementById('prop-zabbix-core-alert');
+                if(alertEl) alertEl.classList.add('hidden');
+                
                 const modeEl = document.getElementById('prop-mode');
                 if(modeEl) modeEl.value = 'auto';
             }
@@ -485,6 +722,16 @@
             }
             if(type === 'task') {
                 if(window.editorTask) window.editorTask.setValue('');
+            }
+            if(type === 'zscript') {
+                if(window.editors['zscript-command']) window.editors['zscript-command'].setValue('');
+                document.getElementById('zscript-type').value = "0";
+                document.getElementById('zscript-scope').value = "2";
+                document.getElementById('zscript-executeon').value = "1";
+                document.getElementById('zscript-url').value = '';
+                document.getElementById('zscript-timeout').value = '30s';
+                document.getElementById('zscript-parameters').value = '';
+                document.getElementById('zscript-type').dispatchEvent(new Event('change'));
             }
         }
 
@@ -498,6 +745,15 @@
                 document.getElementById('cat-display').value = item.display_name;
                 document.getElementById('cat-order').value = item.order;
                 document.getElementById('cat-icon').value = item.icon || 'fa-folder';
+                
+                document.getElementById('cat-props-list').innerHTML = state.properties.map(p => `
+                    <label class='flex items-center space-x-2'>
+                        <input type='checkbox' class='cat-prop-cb form-checkbox h-3 w-3 text-brand-500' value='${p.id}' ${p.category_id === item.id ? 'checked' : ''}>
+                        <span>${p.name}</span>
+                    </label>
+                `).join('');
+                document.getElementById('cat-form-title').innerText = 'Edit Category';
+                document.getElementById('cat-submit-btn').innerText = 'Update Category';
             } else if (type === 'prop') {
                 switchTab('tab-prop');
                 item = state.properties.find(p => p.id === id);
@@ -508,6 +764,12 @@
                 document.getElementById('prop-cat').value = item.category_id;
                 document.getElementById('prop-type').value = item.data_type;
                 document.getElementById('prop-mode').value = item.display_mode || 'auto';
+                
+                const zabbixHardcoded = ['zabbix_metadata', 'zabbix_inventory', 'zabbix_metrics', 'zabbix_disks', 'zabbix_roles', 'zabbix_services', 'zabbix_hyperv'];
+                const isCore = zabbixHardcoded.includes(item.name);
+                document.getElementById('prop-zabbix-wrapper').classList.toggle('hidden', isCore);
+                document.getElementById('prop-zabbix-core-alert').classList.toggle('hidden', !isCore);
+                
                 document.getElementById('prop-zabbix').value = item.zabbix_mapping || '';
                 const btn = document.getElementById('prop-submit-btn');
                 if (btn) btn.innerText = 'Update Prop';
@@ -535,17 +797,64 @@
                 }
                 document.getElementById('task-map').checked = item.map_to_properties;
                 document.getElementById('task-parser').value = item.parser_id || '';
+            } else if (type === 'zscript') {
+                switchTab('tab-zscripts');
+                item = state.zscripts.find(p => p.id === id);
+                document.getElementById('zscript-id').value = item.id;
+                document.getElementById('zscript-name').value = item.name;
+                document.getElementById('zscript-desc').value = item.description || '';
+                document.getElementById('zscript-type').value = item.script_type;
+                document.getElementById('zscript-scope').value = item.scope || 2;
+                document.getElementById('zscript-executeon').value = item.execute_on;
+                document.getElementById('zscript-username').value = item.username || '';
+                document.getElementById('zscript-password').value = item.password || '';
+                document.getElementById('zscript-port').value = item.port || '';
+                document.getElementById('zscript-url').value = item.url || '';
+                document.getElementById('zscript-timeout').value = item.timeout || '30s';
+                document.getElementById('zscript-parameters').value = item.parameters ? JSON.stringify(item.parameters) : '';
+                document.getElementById('zscript-map').checked = item.map_to_properties;
+                document.getElementById('zscript-parser').value = item.parser_id || '';
+                setTimeout(() => {
+                    if(window.editors['zscript-command']) {
+                        window.editors['zscript-command'].setValue(item.command || '');
+                    }
+                    document.getElementById('zscript-type').dispatchEvent(new Event('change'));
+                }, 50);
+                document.getElementById('zscript-form-title').innerText = 'Edit Zabbix Script';
+                document.getElementById('zscript-submit-btn').innerText = 'Update Zabbix Script';
+            }
+        }
+
+
+        async function deleteItem(type, id) {
+            if (!confirm(`Are you sure you want to delete this item?`)) return;
+            let url = '';
+            if (type === 'categories') url = `/api/admin/categories/${id}`;
+            else if (type === 'properties') url = `/api/admin/properties/${id}`;
+            else if (type === 'parsers') url = `/api/admin/parsers/${id}`;
+            else if (type === 'tasks') url = `/api/admin/tasks/${id}`;
+            else if (type === 'zabbix-scripts') url = `/api/zabbix-scripts/${id}`;
+            else return;
+            
+            try {
+                await apiCall(url, 'DELETE');
+                reloadAll();
+            } catch (e) {
+                console.error(e);
             }
         }
 
         async function submitCategory(e) {
+
             e.preventDefault();
             const id = document.getElementById('cat-id').value;
+            const propIds = Array.from(document.querySelectorAll('.cat-prop-cb:checked')).map(cb => parseInt(cb.value));
             const data = {
                 name: document.getElementById('cat-name').value,
                 display_name: document.getElementById('cat-display').value,
-                order: parseInt(document.getElementById('cat-order').value || '0'),
-                icon: document.getElementById('cat-icon').value || 'fa-folder'
+                order: parseInt(document.getElementById('cat-order').value) || 0,
+                icon: document.getElementById('cat-icon').value,
+                property_ids: propIds
             };
             await apiCall(id ? `/api/admin/categories/${id}` : '/api/admin/categories', id ? 'PUT' : 'POST', data);
             resetForm('cat');
@@ -589,6 +898,62 @@
             resetForm('parser'); reloadAll(); 
         }
         
+        // Zabbix Scripts API
+        async function submitZscript(e) {
+            e.preventDefault();
+            const id = document.getElementById('zscript-id').value;
+            let parameters = null;
+            try {
+                const pVal = document.getElementById('zscript-parameters').value.trim();
+                if (pVal) parameters = JSON.parse(pVal);
+            } catch(err) {
+                alert("Invalid JSON in parameters");
+                return;
+            }
+            const payload = {
+                name: document.getElementById('zscript-name').value,
+                description: document.getElementById('zscript-desc').value,
+                script_type: parseInt(document.getElementById('zscript-type').value),
+                execute_on: parseInt(document.getElementById('zscript-executeon').value),
+                scope: parseInt(document.getElementById('zscript-scope').value),
+                command: window.editors['zscript-command'].getValue(),
+                username: document.getElementById('zscript-username').value,
+                password: document.getElementById('zscript-password').value,
+                port: document.getElementById('zscript-port').value,
+                url: document.getElementById('zscript-url').value,
+                timeout: document.getElementById('zscript-timeout').value,
+                parameters: parameters,
+                map_to_properties: document.getElementById('zscript-map').checked,
+                parser_id: document.getElementById('zscript-parser').value ? parseInt(document.getElementById('zscript-parser').value) : null
+            };
+            
+            const method = id ? 'PUT' : 'POST';
+            const url = id ? `/api/zabbix-scripts/${id}` : '/api/zabbix-scripts';
+            await apiCall(url, method, payload);
+            resetForm('zscript');
+            reloadAll();
+        }
+
+        async function pushZscriptToZabbix(id) {
+            const hostGroupId = prompt("Enter Target Zabbix Host Group ID (or leave empty for All):", "");
+            if (hostGroupId === null) return; // cancelled
+            
+            try {
+                const res = await fetch('/api/zabbix-scripts/push-to-zabbix', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ script_id: id, host_group_id: hostGroupId || null })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert(data.message);
+                } else {
+                    alert("Error: " + data.detail);
+                }
+            } catch(e) {
+                alert("Error pushing to Zabbix.");
+            }
+        }
         async function submitTask(e) { 
             e.preventDefault(); 
             const id = document.getElementById('task-id').value;
@@ -628,8 +993,172 @@
                         viewportMargin: Infinity
                     });
                 }
+                const zscriptTypeSelect = document.getElementById('zscript-type');
+                if (zscriptTypeSelect) {
+                    zscriptTypeSelect.addEventListener('change', (e) => {
+                        const val = parseInt(e.target.value);
+                        document.getElementById('zscript-ssh-fields').classList.toggle('hidden', ![2,3].includes(val));
+                        document.getElementById('zscript-command-wrapper').classList.toggle('hidden', val === 6);
+                        document.getElementById('zscript-executeon-wrapper').classList.toggle('hidden', val !== 0);
+                        
+                        document.getElementById('zscript-url-wrapper').classList.toggle('hidden', val !== 6);
+                        document.getElementById('zscript-webhook-fields').classList.toggle('hidden', val !== 5);
+                        if (window.editors['zscript-command']) setTimeout(() => window.editors['zscript-command'].refresh(), 10);
+                    });
+                }
+                const zEl = document.getElementById('zscript-command');
+                if (zEl) {
+                    if(!window.editors) window.editors = {};
+                    window.editors['zscript-command'] = CodeMirror.fromTextArea(zEl, {
+                        mode: 'powershell',
+                        theme: 'darcula',
+                        lineNumbers: true,
+                        viewportMargin: Infinity
+                    });
+                }
             }
         });
+
+        
+        // Settings logic
+        async function fetchSettings() {
+            try {
+                const res = await fetch('/api/admin/settings');
+                const data = await res.json();
+                document.getElementById('set-zabbix-url').value = data.zabbix_url || '';
+                document.getElementById('set-zabbix-token').value = data.zabbix_api_token || '';
+                document.getElementById('set-zabbix-user').value = data.zabbix_user || '';
+                document.getElementById('set-zabbix-pass').value = data.zabbix_password || '';
+                document.getElementById('set-zabbix-timeout').value = data.zabbix_timeout || 15;
+                document.getElementById('set-zabbix-ssl').checked = data.zabbix_verify_ssl;
+                if (document.getElementById('set-zabbix-groups')) {
+                    document.getElementById('set-zabbix-groups').value = data.zabbix_host_groups || '';
+                    loadZabbixGroupsForSettings();
+                }
+                
+                document.getElementById('set-prober-port').value = data.prober_default_port || 10052;
+                document.getElementById('set-prober-ttl').value = data.prober_default_ttl || 1800;
+                document.getElementById('set-prober-ttl').value = data.prober_default_ttl || 1800;
+                document.getElementById('set-prober-exec').value = data.prober_execution_timeout || 600;
+                if (document.getElementById('set-log-level')) {
+                    document.getElementById('set-log-level').value = data.log_level || 'INFO';
+                }
+            } catch (e) {
+                console.error("Failed to fetch settings", e);
+            }
+        }
+        
+        async function syncZabbixGroups() {
+            try {
+                const btn = document.querySelector('button[onclick="syncZabbixGroups()"]');
+                const origText = btn.innerHTML;
+                btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-1"></i>Syncing...';
+                const res = await fetch('/api/admin/sync-groups', {method: 'POST'});
+                btn.innerHTML = origText;
+                if (res.ok) {
+                    await loadZabbixGroupsForSettings();
+                    alert("Zabbix groups synchronized successfully.");
+                } else {
+                    alert("Failed to synchronize groups.");
+                }
+            } catch(e) {
+                alert("Error synchronizing groups.");
+            }
+        }
+        
+        async function loadZabbixGroupsForSettings() {
+            try {
+                const res = await fetch('/api/admin/groups');
+                if (!res.ok) return;
+                const data = await res.json();
+                const container = document.getElementById('zabbix-groups-container');
+                if (!container) return;
+                
+                const currentSetting = document.getElementById('set-zabbix-groups').value.split(',').filter(x => x);
+                
+                container.innerHTML = data.groups.map(g => `
+                    <label class="flex items-center space-x-2 text-xs text-slate-300 bg-slate-800/50 p-2 rounded border border-darkborder cursor-pointer hover:bg-slate-800">
+                        <input type="checkbox" class="zgroup-checkbox form-checkbox h-3 w-3 text-emerald-500 rounded border-slate-700 bg-slate-900" value="${g.groupid}" ${currentSetting.includes(g.groupid) ? 'checked' : ''}>
+                        <span>${g.name}</span>
+                    </label>
+                `).join('');
+                
+                // reattach listeners to checkboxes
+                document.querySelectorAll('.zgroup-checkbox').forEach(cb => {
+                    cb.addEventListener('change', () => {
+                        const checked = Array.from(document.querySelectorAll('.zgroup-checkbox:checked')).map(c => c.value);
+                        document.getElementById('set-zabbix-groups').value = checked.join(',');
+                    });
+                });
+            } catch(e) {
+                console.error(e);
+            }
+        }
+
+        async function submitSettings(e) {
+            e.preventDefault();
+            const payload = {
+                zabbix_url: document.getElementById('set-zabbix-url').value,
+                zabbix_api_token: document.getElementById('set-zabbix-token').value,
+                zabbix_user: document.getElementById('set-zabbix-user').value,
+                zabbix_password: document.getElementById('set-zabbix-pass').value,
+                zabbix_timeout: parseInt(document.getElementById('set-zabbix-timeout').value),
+                zabbix_verify_ssl: document.getElementById('set-zabbix-ssl').checked,
+                zabbix_host_groups: document.getElementById('set-zabbix-groups') ? document.getElementById('set-zabbix-groups').value : '',
+                prober_default_port: parseInt(document.getElementById('set-prober-port').value),
+                prober_default_ttl: parseInt(document.getElementById('set-prober-ttl').value),
+                prober_execution_timeout: parseInt(document.getElementById('set-prober-exec').value),
+                log_level: document.getElementById('set-log-level') ? document.getElementById('set-log-level').value : 'INFO'
+            };
+            
+            try {
+                const res = await fetch('/api/admin/settings', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) alert("Settings saved successfully.");
+                else alert("Failed to save settings.");
+            } catch (e) {
+                alert("Error saving settings.");
+            }
+        }
+        
+        function switchMainMenu(menuId) {
+            document.querySelectorAll('.main-menu-content').forEach(el => el.classList.remove('active'));
+            document.getElementById(menuId).classList.add('active');
+            
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            if (typeof event !== 'undefined' && event && event.currentTarget) {
+                event.currentTarget.classList.add('active');
+            } else {
+                const btn = document.querySelector(`button[onclick="switchMainMenu('${menuId}')"]`);
+                if (btn) btn.classList.add('active');
+            }
+            
+            if (menuId === 'menu-settings') fetchSettings();
+        }
+        
+        function switchSettingsTab(tabId) {
+            document.querySelectorAll('.tab-content-settings').forEach(el => {
+                el.classList.remove('block');
+                el.classList.add('hidden');
+            });
+            const target = document.getElementById(tabId);
+            target.classList.remove('hidden');
+            target.classList.add('block');
+            
+            const parentMenu = document.getElementById('menu-settings');
+            parentMenu.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            if (typeof event !== 'undefined' && event && event.currentTarget) {
+                event.currentTarget.classList.add('active');
+            } else {
+                const btn = document.querySelector(`button[onclick="switchMainMenu('${menuId}')"]`);
+                if (btn) btn.classList.add('active');
+            }
+        }
 
         window.onload = reloadAll;
 
