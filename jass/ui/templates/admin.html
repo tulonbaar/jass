@@ -46,6 +46,16 @@
         .tab-content { display: none; }
         .tab-content.active { display: block; }
     </style>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/theme/darcula.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/python/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.13/mode/powershell/powershell.min.js"></script>
+    <style>
+        .CodeMirror { height: auto; min-height: 200px; border-radius: 0.5rem; font-size: 12px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+        .CodeMirror-scroll { min-height: 200px; }
+    </style>
 </head>
 <body class="bg-darkbg text-slate-100 min-h-screen flex flex-col font-sans p-6">
     <header class="mb-4 flex justify-between items-center pb-4">
@@ -110,7 +120,7 @@
         </div>
         <div class="bg-darkcard border border-darkborder rounded-xl p-6 shadow-xl">
             <h2 class="text-lg font-bold mb-6 border-b border-darkborder pb-2">Existing Categories</h2>
-            <div id="categories-list" class="space-y-2 overflow-y-auto max-h-[600px] pr-2"></div>
+            <input type="text" id="search-cat" onkeyup="renderLists()" placeholder="Search Categories..." class="form-input mb-4"><div id="categories-list" class="space-y-2 overflow-y-auto max-h-[600px] pr-2"></div>
         </div>
     </div>
 
@@ -128,11 +138,11 @@
                 <div class="grid grid-cols-3 gap-4">
                     <div>
                         <label class="form-label">Category</label>
-                        <select id="prop-cat" required class="form-input"></select>
+                        <select id="prop-cat" required class="form-select w-full bg-slate-900 border border-darkborder rounded px-2 py-1.5 text-slate-200 focus:outline-none focus:border-brand-500"></select>
                     </div>
                     <div>
                         <label class="form-label">Data Type</label>
-                        <select id="prop-type" class="form-input">
+                        <select id="prop-type" class="form-select w-full bg-slate-900 border border-darkborder rounded px-2 py-1.5 text-slate-200">
                             <option value="string">String</option>
                             <option value="number">Number</option>
                             <option value="boolean">Boolean</option>
@@ -141,14 +151,19 @@
                     </div>
                     <div>
                         <label class="form-label">Display Mode</label>
-                        <select id="prop-display-mode" class="form-input">
+                        <select id="prop-mode" class="form-select w-full bg-slate-900 border border-darkborder rounded px-2 py-1.5 text-slate-200">
                             <option value="auto">Auto (Smart)</option>
-                            <option value="table">Table (Searchable/Sortable)</option>
                             <option value="key_value">Key-Value Cards</option>
-                            <option value="badge">Badges</option>
-                            <option value="json">Raw JSON</option>
+                            <option value="table">Table (Searchable/Sortable)</option>
+                            <option value="json">Raw JSON Tree</option>
+                            <option value="badge">Pill Badges</option>
                         </select>
                     </div>
+                </div>
+                <div class="p-3 bg-slate-900/50 border border-darkborder/50 rounded-lg">
+                    <label class="form-label text-brand-400"><i class="fa-solid fa-cloud-arrow-down mr-1"></i>Zabbix Mapping Key (Optional)</label>
+                    <input type="text" id="prop-zabbix" class="form-input w-full mt-1" placeholder="e.g. system.cpu.util">
+                    <p class="text-[10px] text-slate-500 mt-1">If specified, JASS will dynamically populate this property from the Zabbix agent output. To map from a Prober task, ensure the "System Name" matches the JSON key returned by the parser.</p>
                 </div>
                 <div class="flex gap-2">
                     <button type="submit" class="flex-1 bg-brand-600 hover:bg-brand-500 text-white font-bold py-2 px-4 rounded text-xs transition" id="prop-submit-btn">Save Property</button>
@@ -158,7 +173,7 @@
         </div>
         <div class="bg-darkcard border border-darkborder rounded-xl p-6 shadow-xl">
             <h2 class="text-lg font-bold mb-6 border-b border-darkborder pb-2">Existing Properties</h2>
-            <div id="properties-list" class="space-y-2 overflow-y-auto max-h-[600px] pr-2"></div>
+            <input type="text" id="search-prop" onkeyup="renderLists()" placeholder="Search Properties..." class="form-input mb-4"><div id="properties-list" class="space-y-2 overflow-y-auto max-h-[600px] pr-2"></div>
         </div>
     </div>
 
@@ -184,7 +199,7 @@
         </div>
         <div class="bg-darkcard border border-darkborder rounded-xl p-6 shadow-xl">
             <h2 class="text-lg font-bold mb-6 border-b border-darkborder pb-2">Existing Parsers</h2>
-            <div id="parsers-list" class="space-y-2 overflow-y-auto max-h-[600px] pr-2"></div>
+            <input type="text" id="search-parser" onkeyup="renderLists()" placeholder="Search Parsers..." class="form-input mb-4"><div id="parsers-list" class="space-y-2 overflow-y-auto max-h-[600px] pr-2"></div>
         </div>
     </div>
 
@@ -217,19 +232,29 @@
         </div>
         <div class="bg-darkcard border border-darkborder rounded-xl p-6 shadow-xl">
             <h2 class="text-lg font-bold mb-6 border-b border-darkborder pb-2">Existing Tasks</h2>
-            <div id="tasks-list" class="space-y-2 overflow-y-auto max-h-[600px] pr-2"></div>
+            <input type="text" id="search-task" onkeyup="renderLists()" placeholder="Search Tasks..." class="form-input mb-4"><div id="tasks-list" class="space-y-2 overflow-y-auto max-h-[600px] pr-2"></div>
         </div>
     </div>
 
     <script>
         let state = { categories: [], properties: [], parsers: [], tasks: [] };
 
-        function switchTab(tabId) {
+                function switchTab(tabId) {
             document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(tc => tc.classList.add('hidden'));
             
-            document.querySelector(`button[onclick="switchTab('${tabId}')"]`).classList.add('active');
+            const btn = document.querySelector(`button[onclick="switchTab('${tabId}')"]`);
+            if(btn) btn.classList.add('active');
+            
             document.getElementById(tabId).classList.remove('hidden');
+            
+            // Refresh CodeMirror because they bug out if initialized while hidden
+            if (tabId === 'tab-parser' && window.editorParser) {
+                setTimeout(() => window.editorParser.refresh(), 10);
+            }
+            if (tabId === 'tab-task' && window.editorTask) {
+                setTimeout(() => window.editorTask.refresh(), 10);
+            }
         }
 
         async function apiCall(url, method = 'GET', body = null) {
@@ -243,21 +268,98 @@
             return res.ok ? await res.json() : null;
         }
 
-        async function reloadAll() {
-            state.categories = await apiCall('/api/admin/categories') || [];
-            state.properties = await apiCall('/api/admin/properties') || [];
-            state.parsers = await apiCall('/api/admin/parsers') || [];
-            state.tasks = await apiCall('/api/admin/tasks') || [];
+                function renderTree() {
+            const container = document.getElementById('tree-container');
+            if (!container) return;
+            
+            let html = '';
+            const cats = [...state.categories].sort((a,b) => a.order - b.order);
+            
+            cats.forEach(cat => {
+                const props = state.properties.filter(p => p.category_id === cat.id);
+                
+                html += `
+                    <div class="bg-slate-900/50 rounded-xl border border-darkborder overflow-hidden">
+                        <div class="bg-slate-800/80 px-4 py-2 border-b border-darkborder flex items-center gap-2">
+                            <i class="fa-solid ${cat.icon} text-brand-400"></i>
+                            <span class="font-bold text-slate-200">${cat.display_name}</span>
+                            <span class="text-xs text-slate-500 ml-2">(${props.length} properties)</span>
+                        </div>
+                        <div class="p-4 space-y-3">
+                `;
+                
+                if (props.length === 0) {
+                    html += `<div class="text-xs text-slate-500 italic">No properties mapped to this category.</div>`;
+                }
+                
+                props.forEach(prop => {
+                    let sourceHtml = '';
+                    const zabbixHardcoded = ['zabbix_metadata', 'zabbix_inventory', 'zabbix_metrics', 'zabbix_disks', 'zabbix_roles', 'zabbix_services', 'zabbix_hyperv'];
+                    
+                    if (zabbixHardcoded.includes(prop.name)) {
+                        sourceHtml = `<span class="px-2 py-0.5 bg-red-500/20 text-red-400 border border-red-500/30 rounded text-[10px] font-bold" title="Hardcoded Zabbix Core Entity"><i class="fa-solid fa-cloud-arrow-down mr-1"></i>Zabbix Core Module</span>`;
+                    } else if (prop.zabbix_mapping) {
+                        sourceHtml = `<span class="px-2 py-0.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded text-[10px] font-bold" title="Dynamically mapped via Zabbix key"><i class="fa-solid fa-satellite-dish mr-1"></i>Zabbix Item: ${prop.zabbix_mapping}</span>`;
+                    } else {
+                        let foundTask = null;
+                        for (const task of state.tasks) {
+                            if (task.parser_id) {
+                                const parser = state.parsers.find(p => p.id === task.parser_id);
+                                if (parser && parser.code.includes(`"${prop.name}"`)) {
+                                    foundTask = task.name;
+                                    break;
+                                }
+                            }
+                        }
+                        if (foundTask) {
+                            sourceHtml = `<span class="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-[10px] font-bold" title="Mapped via Prober output JSON"><i class="fa-solid fa-terminal mr-1"></i>Prober Task: ${foundTask}</span>`;
+                        } else {
+                            sourceHtml = `<span class="px-2 py-0.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 rounded text-[10px] font-bold" title="No matching Zabbix metric or Prober task"><i class="fa-solid fa-link-slash mr-1"></i>Unmapped / Custom API</span>`;
+                        }
+                    }
+                    
+                    html += `
+                        <div class="flex items-center justify-between p-2 rounded-lg hover:bg-slate-800 transition border border-transparent hover:border-darkborder/50">
+                            <div class="flex flex-col">
+                                <span class="text-sm font-semibold text-slate-300">${prop.display_name}</span>
+                                <span class="text-[10px] text-slate-500 font-mono">${prop.name}</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                ${sourceHtml}
+                                <span class="text-[10px] text-slate-400 bg-slate-950 px-1.5 py-0.5 rounded border border-darkborder/40 uppercase">${prop.display_mode}</span>
+                                <button onclick="editItem('prop', ${prop.id})" class="text-slate-500 hover:text-blue-400 transition"><i class="fa-solid fa-pen"></i></button>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                html += `</div></div>`;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        function renderLists() {
+            // Get search terms
+            const searchCat = (document.getElementById('search-cat')?.value || '').toLowerCase();
+            const searchProp = (document.getElementById('search-prop')?.value || '').toLowerCase();
+            const searchParser = (document.getElementById('search-parser')?.value || '').toLowerCase();
+            const searchTask = (document.getElementById('search-task')?.value || '').toLowerCase();
 
             // Render Selects
             const catSelect = document.getElementById('prop-cat');
-            catSelect.innerHTML = state.categories.map(c => `<option value="${c.id}">${c.display_name}</option>`).join('');
+            if (catSelect && state.categories.length > 0 && catSelect.options.length <= 1) {
+                catSelect.innerHTML = state.categories.map(c => `<option value="${c.id}">${c.display_name}</option>`).join('');
+            }
             
             const parserSelect = document.getElementById('task-parser');
-            parserSelect.innerHTML = '<option value="">-- No Parser --</option>' + state.parsers.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+            if (parserSelect && state.parsers.length > 0 && parserSelect.options.length <= 1) {
+                parserSelect.innerHTML = '<option value="">-- No Parser --</option>' + state.parsers.map(p => `<option value="${p.id}">${p.name}</option>`).join('');
+            }
 
-            // Render Lists
-            document.getElementById('categories-list').innerHTML = state.categories.map(c => `
+            // Categories
+            const filteredCats = state.categories.filter(c => c.name.toLowerCase().includes(searchCat) || c.display_name.toLowerCase().includes(searchCat));
+            document.getElementById('categories-list').innerHTML = filteredCats.map(c => `
                 <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-darkborder group hover:border-slate-500 transition">
                     <div class="flex items-center gap-2">
                         <i class="fa-solid ${c.icon || 'fa-folder'} text-brand-400 text-sm"></i>
@@ -268,65 +370,128 @@
                     </div>
                     <div class="flex gap-2">
                         <button onclick="editItem('cat', ${c.id})" class="text-blue-400 hover:text-blue-300 text-xs opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-pen"></i></button>
-                        <button onclick="delItem('categories', ${c.id})" class="text-red-400 hover:text-red-300 text-xs opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-trash"></i></button>
+                        <button onclick="deleteItem('categories', ${c.id})" class="text-red-400 hover:text-red-300 text-xs opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-trash"></i></button>
                     </div>
                 </div>
             `).join('');
 
-            document.getElementById('properties-list').innerHTML = state.properties.map(p => `
+            // Properties
+            const filteredProps = state.properties.filter(p => p.name.toLowerCase().includes(searchProp) || p.display_name.toLowerCase().includes(searchProp));
+            document.getElementById('properties-list').innerHTML = filteredProps.map(p => {
+                let sourceHtml = '';
+                const zabbixHardcoded = ['zabbix_metadata', 'zabbix_inventory', 'zabbix_metrics', 'zabbix_disks', 'zabbix_roles', 'zabbix_services', 'zabbix_hyperv'];
+                
+                if (zabbixHardcoded.includes(p.name)) {
+                    sourceHtml = `<span class="px-1.5 py-0.5 bg-red-500/20 text-red-400 rounded text-[9px] font-bold mt-1 inline-block border border-red-500/30">ZABBIX CORE</span>`;
+                } else if (p.zabbix_mapping) {
+                    sourceHtml = `<span class="px-1.5 py-0.5 bg-blue-500/20 text-blue-400 rounded text-[9px] font-bold mt-1 inline-block border border-blue-500/30">ZABBIX: ${p.zabbix_mapping}</span>`;
+                } else {
+                    let foundTask = null;
+                    for (const task of state.tasks) {
+                        if (task.parser_id) {
+                            const parser = state.parsers.find(pa => pa.id === task.parser_id);
+                            if (parser && parser.code.includes(`"${p.name}"`)) {
+                                foundTask = task.name;
+                                break;
+                            }
+                        }
+                    }
+                    if (foundTask) {
+                        sourceHtml = `<span class="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-400 rounded text-[9px] font-bold mt-1 inline-block border border-emerald-500/30">PROBER: ${foundTask}</span>`;
+                    } else {
+                        sourceHtml = `<span class="px-1.5 py-0.5 bg-slate-700/50 text-slate-400 rounded text-[9px] font-bold mt-1 inline-block border border-slate-600">UNMAPPED</span>`;
+                    }
+                }
+                
+                return `
                 <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-darkborder group hover:border-slate-500 transition">
                     <div>
-                        <div class="font-bold text-yellow-400 flex items-center gap-1.5 flex-wrap">
-                            <span>${p.display_name}</span>
-                            <span class="text-[10px] text-slate-400 uppercase border border-slate-600 rounded px-1">${p.data_type}</span>
-                            <span class="text-[10px] text-brand-400 uppercase border border-brand-800 bg-brand-950/40 rounded px-1">${p.display_mode || 'auto'}</span>
+                        <div>
+                            <span class="font-bold text-brand-400">${p.display_name}</span> 
+                            <span class="text-[10px] bg-slate-700 px-1 rounded text-slate-300 ml-1 uppercase">${p.data_type}</span>
+                            <span class="text-[10px] border border-slate-600 px-1 rounded text-slate-300 ml-1 uppercase">${p.display_mode}</span>
                         </div>
                         <div class="text-xs text-slate-400">${p.name} (Cat ID: ${p.category_id})</div>
+                        ${sourceHtml}
                     </div>
                     <div class="flex gap-2">
                         <button onclick="editItem('prop', ${p.id})" class="text-blue-400 hover:text-blue-300 text-xs opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-pen"></i></button>
-                        <button onclick="delItem('properties', ${p.id})" class="text-red-400 hover:text-red-300 text-xs opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-trash"></i></button>
+                        <button onclick="deleteItem('properties', ${p.id})" class="text-red-400 hover:text-red-300 text-xs opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-trash"></i></button>
                     </div>
                 </div>
-            `).join('');
+            `;}).join('');
 
-            document.getElementById('parsers-list').innerHTML = state.parsers.map(p => `
+            // Parsers
+            const filteredParsers = state.parsers.filter(p => p.name.toLowerCase().includes(searchParser));
+            document.getElementById('parsers-list').innerHTML = filteredParsers.map(p => `
                 <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-darkborder group hover:border-slate-500 transition">
-                    <div><span class="font-bold text-pink-400">${p.name}</span> <div class="text-xs text-slate-400">${p.description||''}</div></div>
+                    <div>
+                        <div class="font-bold text-brand-400">${p.name}</div>
+                        <div class="text-xs text-slate-400 line-clamp-1">${p.description || 'No description'}</div>
+                    </div>
                     <div class="flex gap-2">
                         <button onclick="editItem('parser', ${p.id})" class="text-blue-400 hover:text-blue-300 text-xs opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-pen"></i></button>
-                        <button onclick="delItem('parsers', ${p.id})" class="text-red-400 hover:text-red-300 text-xs opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-trash"></i></button>
+                        <button onclick="deleteItem('parsers', ${p.id})" class="text-red-400 hover:text-red-300 text-xs opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-trash"></i></button>
                     </div>
                 </div>
             `).join('');
 
-            document.getElementById('tasks-list').innerHTML = state.tasks.map(t => `
+            // Tasks
+            const filteredTasks = state.tasks.filter(t => t.name.toLowerCase().includes(searchTask));
+            document.getElementById('tasks-list').innerHTML = filteredTasks.map(t => `
                 <div class="flex justify-between items-center p-3 bg-slate-800 rounded-lg border border-darkborder group hover:border-slate-500 transition">
-                    <div class="overflow-hidden">
-                        <div class="font-bold text-purple-400">${t.name}</div>
-                        <div class="text-xs text-slate-400 truncate max-w-sm">${t.content}</div>
+                    <div>
+                        <div>
+                            <span class="font-bold text-brand-400">${t.name}</span>
+                            <span class="text-[10px] bg-blue-900/50 border border-blue-800 text-blue-300 px-1 rounded ml-1">${t.script_type}</span>
+                            ${t.map_to_properties ? '<span class="text-[10px] bg-emerald-900/50 border border-emerald-800 text-emerald-300 px-1 rounded ml-1">MAPS PROPS</span>' : ''}
+                        </div>
+                        <div class="text-xs text-slate-400">Parser ID: ${t.parser_id || 'None'}</div>
                     </div>
-                    <div class="flex gap-2 shrink-0">
+                    <div class="flex gap-2">
                         <button onclick="editItem('task', ${t.id})" class="text-blue-400 hover:text-blue-300 text-xs opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-pen"></i></button>
-                        <button onclick="delItem('tasks', ${t.id})" class="text-red-400 hover:text-red-300 text-xs opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-trash"></i></button>
+                        <button onclick="deleteItem('tasks', ${t.id})" class="text-red-400 hover:text-red-300 text-xs opacity-0 group-hover:opacity-100 transition"><i class="fa-solid fa-trash"></i></button>
                     </div>
                 </div>
             `).join('');
+        }
+
+                async function reloadAll() {
+            state.categories = await apiCall('/api/admin/categories') || [];
+            state.properties = await apiCall('/api/admin/properties') || [];
+            state.parsers = await apiCall('/api/admin/parsers') || [];
+            state.tasks = await apiCall('/api/admin/tasks') || [];
+
+            renderTree();
+            renderLists();
         }
 
         function resetForm(type) {
             document.getElementById(`form-${type === 'cat' ? 'category' : type === 'prop' ? 'property' : type}`).reset();
             document.getElementById(`${type}-id`).value = '';
-            document.getElementById(`${type}-form-title`).innerText = `Create New ${type.charAt(0).toUpperCase() + type.slice(1)}`;
-            document.getElementById(`${type}-submit-btn`).innerText = `Save ${type.charAt(0).toUpperCase() + type.slice(1)}`;
+            const titleEl = document.getElementById(`${type}-form-title`);
+            if(titleEl) titleEl.innerText = `Create New ${type.charAt(0).toUpperCase() + type.slice(1)}`;
+            const btnEl = document.getElementById(`${type}-submit-btn`);
+            if(btnEl) btnEl.innerText = `Save ${type.charAt(0).toUpperCase() + type.slice(1)}`;
             if(type === 'cat') document.getElementById('cat-icon').value = 'fa-folder';
-            if(type === 'prop') document.getElementById('prop-display-mode').value = 'auto';
-            if(type === 'parser') document.getElementById('parser-code').value = 'def parse(output):\n    import json\n    return json.loads(output)';
+            if(type === 'prop') {
+                const modeEl = document.getElementById('prop-mode');
+                if(modeEl) modeEl.value = 'auto';
+            }
+            if(type === 'parser') {
+                const defaultCode = 'def parse(output):\n    import json\n    return json.loads(output)';
+                document.getElementById('parser-code').value = defaultCode;
+                if(window.editorParser) window.editorParser.setValue(defaultCode);
+            }
+            if(type === 'task') {
+                if(window.editorTask) window.editorTask.setValue('');
+            }
         }
 
-        function editItem(type, id) {
+                function editItem(type, id) {
             let item;
             if (type === 'cat') {
+                switchTab('tab-cat');
                 item = state.categories.find(c => c.id === id);
                 document.getElementById('cat-id').value = item.id;
                 document.getElementById('cat-name').value = item.name;
@@ -334,6 +499,7 @@
                 document.getElementById('cat-order').value = item.order;
                 document.getElementById('cat-icon').value = item.icon || 'fa-folder';
             } else if (type === 'prop') {
+                switchTab('tab-prop');
                 item = state.properties.find(p => p.id === id);
                 document.getElementById('prop-id').value = item.id;
                 document.getElementById('prop-name').value = item.name;
@@ -341,59 +507,84 @@
                 document.getElementById('prop-desc').value = item.description || '';
                 document.getElementById('prop-cat').value = item.category_id;
                 document.getElementById('prop-type').value = item.data_type;
-                document.getElementById('prop-display-mode').value = item.display_mode || 'auto';
-            } else if (type === 'parser') {
+                document.getElementById('prop-mode').value = item.display_mode || 'auto';
+                document.getElementById('prop-zabbix').value = item.zabbix_mapping || '';
+                const btn = document.getElementById('prop-submit-btn');
+                if (btn) btn.innerText = 'Update Prop';
+                        } else if (type === 'parser') {
+                switchTab('tab-parser');
                 item = state.parsers.find(p => p.id === id);
                 document.getElementById('parser-id').value = item.id;
                 document.getElementById('parser-name').value = item.name;
                 document.getElementById('parser-desc').value = item.description || '';
-                document.getElementById('parser-code').value = item.code;
+                document.getElementById('parser-code').value = item.code || '';
+                if(window.editorParser) {
+                    window.editorParser.setValue(item.code || '');
+                    setTimeout(() => window.editorParser.refresh(), 50);
+                }
             } else if (type === 'task') {
+                switchTab('tab-task');
                 item = state.tasks.find(t => t.id === id);
                 document.getElementById('task-id').value = item.id;
                 document.getElementById('task-name').value = item.name;
                 document.getElementById('task-desc').value = item.description || '';
-                document.getElementById('task-content').value = item.content;
-                document.getElementById('task-parser').value = item.parser_id || '';
+                document.getElementById('task-content').value = item.content || '';
+                if(window.editorTask) {
+                    window.editorTask.setValue(item.content || '');
+                    setTimeout(() => window.editorTask.refresh(), 50);
+                }
                 document.getElementById('task-map').checked = item.map_to_properties;
+                document.getElementById('task-parser').value = item.parser_id || '';
             }
-            document.getElementById(`${type}-form-title`).innerText = `Edit ${type.charAt(0).toUpperCase() + type.slice(1)}`;
-            document.getElementById(`${type}-submit-btn`).innerText = `Update ${type.charAt(0).toUpperCase() + type.slice(1)}`;
-            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        async function submitCategory(e) { 
-            e.preventDefault(); 
+        async function submitCategory(e) {
+            e.preventDefault();
             const id = document.getElementById('cat-id').value;
-            const data = { 
-                name: document.getElementById('cat-name').value, 
-                display_name: document.getElementById('cat-display').value, 
-                order: parseInt(document.getElementById('cat-order').value),
+            const data = {
+                name: document.getElementById('cat-name').value,
+                display_name: document.getElementById('cat-display').value,
+                order: parseInt(document.getElementById('cat-order').value || '0'),
                 icon: document.getElementById('cat-icon').value || 'fa-folder'
             };
-            await apiCall(id ? `/api/admin/categories/${id}` : '/api/admin/categories', id ? 'PUT' : 'POST', data); 
-            resetForm('cat'); reloadAll(); 
+            await apiCall(id ? `/api/admin/categories/${id}` : '/api/admin/categories', id ? 'PUT' : 'POST', data);
+            resetForm('cat');
+            reloadAll();
         }
-        
-        async function submitProperty(e) { 
-            e.preventDefault(); 
+
+        async function submitProperty(e) {
+            e.preventDefault();
             const id = document.getElementById('prop-id').value;
-            const data = { 
-                name: document.getElementById('prop-name').value, 
-                display_name: document.getElementById('prop-display').value, 
-                description: document.getElementById('prop-desc').value, 
-                data_type: document.getElementById('prop-type').value, 
-                display_mode: document.getElementById('prop-display-mode').value || 'auto',
-                category_id: parseInt(document.getElementById('prop-cat').value) 
+            const data = {
+                name: document.getElementById('prop-name').value,
+                display_name: document.getElementById('prop-display').value,
+                description: document.getElementById('prop-desc').value,
+                category_id: parseInt(document.getElementById('prop-cat').value),
+                data_type: document.getElementById('prop-type').value,
+                display_mode: document.getElementById('prop-mode').value,
+                zabbix_mapping: document.getElementById('prop-zabbix').value || null
             };
-            await apiCall(id ? `/api/admin/properties/${id}` : '/api/admin/properties', id ? 'PUT' : 'POST', data); 
-            resetForm('prop'); reloadAll(); 
+            await apiCall(id ? `/api/admin/properties/${id}` : '/api/admin/properties', id ? 'PUT' : 'POST', data);
+            resetForm('prop');
+            reloadAll();
         }
+
+        async function delItem(type, id) {
+            if (confirm(`Are you sure you want to delete this ${type}?`)) {
+                await apiCall(`/api/admin/${type}/${id}`, 'DELETE');
+                reloadAll();
+            }
+        }
+
         
         async function submitParser(e) { 
             e.preventDefault(); 
             const id = document.getElementById('parser-id').value;
-            const data = { name: document.getElementById('parser-name').value, description: document.getElementById('parser-desc').value, code: document.getElementById('parser-code').value };
+            const data = { 
+                name: document.getElementById('parser-name').value, 
+                description: document.getElementById('parser-desc').value, 
+                code: window.editorParser ? window.editorParser.getValue() : document.getElementById('parser-code').value 
+            };
             await apiCall(id ? `/api/admin/parsers/${id}` : '/api/admin/parsers', id ? 'PUT' : 'POST', data); 
             resetForm('parser'); reloadAll(); 
         }
@@ -401,19 +592,47 @@
         async function submitTask(e) { 
             e.preventDefault(); 
             const id = document.getElementById('task-id').value;
-            const data = { name: document.getElementById('task-name').value, description: document.getElementById('task-desc').value, content: document.getElementById('task-content').value, script_type: 'powershell', map_to_properties: document.getElementById('task-map').checked, parser_id: document.getElementById('task-parser').value ? parseInt(document.getElementById('task-parser').value) : null };
+            const data = { 
+                name: document.getElementById('task-name').value, 
+                description: document.getElementById('task-desc').value, 
+                content: window.editorTask ? window.editorTask.getValue() : document.getElementById('task-content').value, 
+                script_type: 'powershell', 
+                map_to_properties: document.getElementById('task-map').checked, 
+                parser_id: document.getElementById('task-parser').value ? parseInt(document.getElementById('task-parser').value) : null 
+            };
             await apiCall(id ? `/api/admin/tasks/${id}` : '/api/admin/tasks', id ? 'PUT' : 'POST', data); 
             resetForm('task'); reloadAll(); 
         }
 
-        async function delItem(type, id) {
-            if(confirm('Are you sure you want to delete this item?')) {
-                await apiCall(`/api/admin/${type}/${id}`, 'DELETE');
-                reloadAll();
+        
+        window.editorParser = null;
+        window.editorTask = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (typeof CodeMirror !== 'undefined') {
+                const pEl = document.getElementById('parser-code');
+                if (pEl) {
+                    window.editorParser = CodeMirror.fromTextArea(pEl, {
+                        mode: 'python',
+                        theme: 'darcula',
+                        lineNumbers: true,
+                        viewportMargin: Infinity
+                    });
+                }
+                const tEl = document.getElementById('task-content');
+                if (tEl) {
+                    window.editorTask = CodeMirror.fromTextArea(tEl, {
+                        mode: 'powershell',
+                        theme: 'darcula',
+                        lineNumbers: true,
+                        viewportMargin: Infinity
+                    });
+                }
             }
-        }
+        });
 
         window.onload = reloadAll;
+
     </script>
 </body>
 </html>

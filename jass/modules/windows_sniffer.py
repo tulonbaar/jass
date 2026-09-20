@@ -900,6 +900,32 @@ class WindowsSniffer(BaseSystemSniffer):
                         else:
                             val_obj = HostPropertyValue(host_id=host_id, property_id=prop_obj.id, value=prop_val)
                             db.add(val_obj)
+                            
+                # Dynamically map custom Zabbix metrics based on ZabbixMetricMapping
+                from jass.db.models import ZabbixMetricMapping
+                custom_mappings = db.query(ZabbixMetricMapping).all()
+                items_dict = {it.get("key_", ""): it.get("lastvalue") for it in items}
+                
+                for zm in custom_mappings:
+                    if zm.zabbix_item_key in items_dict:
+                        val_obj = db.query(HostPropertyValue).filter_by(host_id=host_id, property_id=zm.property_id).first()
+                        raw_val = items_dict[zm.zabbix_item_key]
+                        
+                        # Attempt to parse as float if it's numeric
+                        try:
+                            if '.' in str(raw_val):
+                                parsed_val = float(raw_val)
+                            else:
+                                parsed_val = int(raw_val)
+                        except (ValueError, TypeError):
+                            parsed_val = raw_val
+                            
+                        if val_obj:
+                            val_obj.value = parsed_val
+                        else:
+                            val_obj = HostPropertyValue(host_id=host_id, property_id=zm.property_id, value=parsed_val)
+                            db.add(val_obj)
+                            
                 db.commit()
             except Exception as inner_err:
                 logger.error(f"Failed to upsert Zabbix properties for {host_name}: {inner_err}")

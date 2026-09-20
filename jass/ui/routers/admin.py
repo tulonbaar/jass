@@ -21,6 +21,7 @@ class PropertyCreate(BaseModel):
     data_type: str = "string"
     display_mode: Optional[str] = "auto"
     category_id: int
+    zabbix_mapping: Optional[str] = None
 
 class TaskCreate(BaseModel):
     name: str
@@ -49,13 +50,35 @@ def create_category(cat: CategoryCreate, db: Session = Depends(get_db)):
 
 @router.get("/properties")
 def get_properties(db: Session = Depends(get_db)):
-    return db.query(HostProperty).all()
+    props = db.query(HostProperty).all()
+    from jass.db.models import ZabbixMetricMapping
+    res = []
+    for p in props:
+        d = {
+            "id": p.id, "name": p.name, "display_name": p.display_name,
+            "description": p.description, "data_type": p.data_type,
+            "display_mode": p.display_mode, "category_id": p.category_id,
+            "zabbix_mapping": None
+        }
+        zm = db.query(ZabbixMetricMapping).filter_by(property_id=p.id).first()
+        if zm:
+            d["zabbix_mapping"] = zm.zabbix_item_key
+        res.append(d)
+    return res
 
 @router.post("/properties")
 def create_property(prop: PropertyCreate, db: Session = Depends(get_db)):
-    obj = HostProperty(**prop.model_dump())
+    from jass.db.models import ZabbixMetricMapping
+    data = prop.model_dump()
+    z_map = data.pop("zabbix_mapping", None)
+    obj = HostProperty(**data)
     db.add(obj)
     db.commit()
+    db.refresh(obj)
+    if z_map:
+        zm = ZabbixMetricMapping(zabbix_item_key=z_map, property_id=obj.id)
+        db.add(zm)
+        db.commit()
     return obj
 
 @router.get("/tasks")
@@ -107,10 +130,25 @@ def delete_property(id: int, db: Session = Depends(get_db)):
 
 @router.put("/properties/{id}")
 def update_property(id: int, prop: PropertyCreate, db: Session = Depends(get_db)):
+    from jass.db.models import ZabbixMetricMapping
     obj = db.get(HostProperty, id)
     if not obj: raise HTTPException(404)
-    for key, val in prop.model_dump().items():
+    data = prop.model_dump()
+    z_map = data.pop("zabbix_mapping", None)
+    for key, val in data.items():
         setattr(obj, key, val)
+        
+    zm = db.query(ZabbixMetricMapping).filter_by(property_id=obj.id).first()
+    if z_map:
+        if zm:
+            zm.zabbix_item_key = z_map
+        else:
+            zm = ZabbixMetricMapping(zabbix_item_key=z_map, property_id=obj.id)
+            db.add(zm)
+    else:
+        if zm:
+            db.delete(zm)
+            
     db.commit()
     return obj
 
