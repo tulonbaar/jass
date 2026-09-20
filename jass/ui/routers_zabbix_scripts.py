@@ -190,9 +190,18 @@ def execute_zabbix_script(req: ExecuteScriptRequest, db: Session = Depends(get_d
                 parsed_output = {"error": f"Parser error: {str(e)}"}
                 
     # 5. Save to properties if needed
-    # (If we wanted to map to properties, we would need to map properties here based on category or something. 
-    # But for now, we just return the result)
-                
+    if db_script.map_to_properties and isinstance(parsed_output, dict) and "error" not in parsed_output:
+        from jass.db.models import HostProperty, HostPropertyValue
+        for prop_name, value in parsed_output.items():
+            prop = db.query(HostProperty).filter_by(name=prop_name).first()
+            if prop:
+                val_record = db.query(HostPropertyValue).filter_by(host_id=host_id, property_id=prop.id).first()
+                if not val_record:
+                    val_record = HostPropertyValue(host_id=host_id, property_id=prop.id)
+                    db.add(val_record)
+                val_record.value = value
+        db.commit()
+
     return {
         "success": True,
         "raw_output": output,
