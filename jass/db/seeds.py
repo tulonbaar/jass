@@ -53,7 +53,7 @@ def _extract_json_fragment(text: str):
 def _safe_json_loads(text: str):
     # PowerShell console host sometimes hard-wraps stdout at 80 or 120 columns.
     # We strip literal newlines to counteract this console wrapping.
-    text_clean = text.replace('\\r', '').replace('\\n', '')
+    text_clean = text.replace('\r', '').replace('\n', '')
     
     # Try decoding as Base64 first to completely bypass OS/Go encoding corruption
     try:
