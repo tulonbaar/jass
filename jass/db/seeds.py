@@ -34,6 +34,7 @@ _PS_POLYFILL = (
 )
 
 _PS_PREAMBLE = _PS_POLYFILL + "function Out-JassData { param($String) Write-Output ([Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($String))) }; $ProgressPreference='SilentlyContinue'; $ErrorActionPreference='SilentlyContinue';"
+_PS_PREAMBLE = _PS_POLYFILL + "$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='SilentlyContinue';"
 
 _PARSER_PREAMBLE = r'''
 import json
@@ -242,6 +243,7 @@ PROBES = [
             _PS_PREAMBLE + " "
             "$c = Get-Command Get-NetTCPConnection -ErrorAction SilentlyContinue; "
             "if ($c) { $res = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue; if ($res) { $res = @($res | Select-Object LocalAddress,LocalPort,OwningProcess,@{N='Process';E={(Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName}}); Out-JassData (ConvertTo-Json -InputObject $res -Compress); exit 0 } }; "
+            "if ($c) { $res = Get-NetTCPConnection -State Listen -ErrorAction SilentlyContinue; if ($res) { $res = @($res | Select-Object LocalAddress,LocalPort,OwningProcess,@{N='Process';E={(Get-Process -Id $_.OwningProcess -ErrorAction SilentlyContinue).ProcessName}}); ConvertTo-Json -InputObject $res -Compress; exit 0 } }; "
             "$ports = netstat -ano -p tcp | Where-Object { $_ -match '(?i)LISTEN|NAS.UCH' }; "
             "$out = @(); "
             "foreach ($p in $ports) { "
@@ -259,6 +261,7 @@ PROBES = [
             "  } "
             "}; "
             "if ($out.Count -eq 0) { Out-JassData '[]' } else { Out-JassData (ConvertTo-Json -InputObject $out -Compress) }; exit 0"
+            "if ($out.Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject $out -Compress }; exit 0"
         )
     },
     {
@@ -275,6 +278,7 @@ PROBES = [
             "$disks = @(&$getCim Win32_DiskDrive | Select-Object Model, Size, InterfaceType); "
             "$res = New-Object PSObject -Property @{SerialNumber=$bios.SerialNumber; Manufacturer=$cs.Manufacturer; Model=$cs.Model; CPUs=$cpus; RAM_GB=$ram; NICs=$nics; Disks=$disks; MacAddresses=@($nics | ForEach-Object { $_.MACAddress })}; "
             "Out-JassData (ConvertTo-Json -InputObject $res -Depth 4 -Compress); exit 0"
+            "ConvertTo-Json -InputObject $res -Depth 4 -Compress; exit 0"
         )
     },
     {
@@ -286,6 +290,7 @@ PROBES = [
             "$apps = @(Get-ItemProperty $paths -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName } | "
             "Select-Object DisplayName,DisplayVersion,Publisher,InstallDate,InstallLocation | Sort-Object DisplayName); "
             "if ($apps.Count -eq 0) { Out-JassData '[]' } else { Out-JassData (ConvertTo-Json -InputObject $apps -Compress) }; exit 0"
+            "if ($apps.Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject $apps -Compress }; exit 0"
         )
     },
     {
@@ -309,6 +314,7 @@ PROBES = [
             "  } "
             "}; "
             "if ($events.Count -eq 0) { Out-JassData '[]' } else { Out-JassData (ConvertTo-Json -InputObject $events -Compress -Depth 3) }; exit 0"
+            "if ($events.Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject $events -Compress -Depth 3 }; exit 0"
         )
     },
     {
@@ -322,6 +328,7 @@ PROBES = [
             "Get-ChildItem -Path $d -ErrorAction SilentlyContinue | Where-Object { $_.PSIsContainer } | ForEach-Object { "
             "$subs = ''; try { $subs = ([System.IO.Directory]::GetDirectories($_.FullName) | ForEach-Object { [System.IO.Path]::GetFileName($_) }) -join ', ' } catch {}; $out += New-Object PSObject -Property @{Drive=$d;Folder=$_.Name;Standard=($known -contains $_.Name);Subfolders=$subs} } }; "
             "if ($out.Count -eq 0) { Out-JassData '[]' } else { Out-JassData (ConvertTo-Json -InputObject $out -Compress) }; exit 0"
+            "if ($out.Count -eq 0) { '[]' } else { ConvertTo-Json -InputObject $out -Compress }; exit 0"
         )
     },
     {
@@ -336,6 +343,7 @@ PROBES = [
             "$port = 3389; if ($rdp -and $rdp.PortNumber -ne $null) { $port = [int]$rdp.PortNumber }; "
             "$res = New-Object PSObject -Property @{TSEnabled=$enabled;Port=$port;Sessions=$qwinsta}; "
             "Out-JassData (ConvertTo-Json -InputObject $res -Compress); exit 0"
+            "ConvertTo-Json -InputObject $res -Compress; exit 0"
         )
     },
     {
@@ -360,6 +368,7 @@ PROBES = [
             "  } } "
             "}; "
             "if ($matched.Count -gt 0) { $res = @($matched | Group-Object User | Select-Object Name, Count); Out-JassData (ConvertTo-Json -InputObject $res -Compress) } else { Out-JassData '[]' }; exit 0"
+            "if ($matched.Count -gt 0) { $res = @($matched | Group-Object User | Select-Object Name, Count); ConvertTo-Json -InputObject $res -Compress } else { '[]' }; exit 0"
         )
     }
 ]
