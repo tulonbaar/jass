@@ -12,3 +12,11 @@ build/
 
 ## Application-specific files and directories
 analysis_reports/
+jass.db
+*.exe
+.go-custom/
+
+## VS Code
+.vscode/
+# Temporary agent scripts
+temp/

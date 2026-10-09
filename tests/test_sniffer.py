@@ -4,7 +4,7 @@ Unit tests for WindowsSniffer module and Zabbix telemetry parsing.
 
 import json
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from jass.analyzers.zabbix_analyzer import ZabbixAnalyzer
 from jass.core.client import ZabbixClient
@@ -210,16 +210,21 @@ class TestWindowsSniffer(unittest.TestCase):
         self.assertIn("DB02", vm_map)
         self.assertEqual(vm_map["DB02"].state, "Off")
 
-    def test_execute_remote_probe_with_known_probe_auto_creates_script(self):
-        """When the probe's Zabbix script does not exist yet, it should be auto-created via script.create."""
+    @patch("jass.core.prober_client.ProberClient")
+    def test_execute_remote_probe_via_prober(self, mock_prober_cls):
+        """When executing remote probe, ProberClient should be invoked with target task content."""
+        mock_instance = MagicMock()
+        mock_instance.is_alive.return_value = True
+        mock_instance.execute_script.return_value = {
+            "exit_code": 0,
+            "stdout": '{"SerialNumber":"SN-12345","Manufacturer":"Dell Inc.","Model":"PowerEdge R750","MacAddresses":["00:11:22:33:44:55"]}',
+            "stderr": ""
+        }
+        mock_prober_cls.return_value = mock_instance
 
         def call_side_effect(method, params=None, auth_required=True):
-            if method == "script.get":
-                return []  # No pre-existing scripts
-            if method == "script.create":
-                return {"scriptids": ["501"]}
-            if method == "script.execute":
-                return {"value": '{"SerialNumber":"SN-12345","Manufacturer":"Dell Inc.","Model":"PowerEdge R750","MacAddresses":["00:11:22:33:44:55"]}'}
+            if method == "hostinterface.get":
+                return [{"ip": "10.0.0.1"}]
             return []
 
         self.mock_client.call.side_effect = call_side_effect
@@ -232,18 +237,21 @@ class TestWindowsSniffer(unittest.TestCase):
         self.assertEqual(result.parsed_data["serial_number"], "SN-12345")
         self.assertEqual(result.parsed_data["mac_addresses"], ["00:11:22:33:44:55"])
 
-        # Ensure script.create was actually called to provision the missing script
-        create_calls = [c for c in self.mock_client.call.call_args_list if c.args[0] == "script.create"]
-        self.assertEqual(len(create_calls), 1)
-
-    def test_execute_remote_probe_reuses_existing_script(self):
-        """When a script with the probe's expected name already exists, it should be reused (no script.create)."""
+    @patch("jass.core.prober_client.ProberClient")
+    def test_execute_remote_probe_listening_ports(self, mock_prober_cls):
+        """When listening_ports probe executes, parsed ports should be populated."""
+        mock_instance = MagicMock()
+        mock_instance.is_alive.return_value = True
+        mock_instance.execute_script.return_value = {
+            "exit_code": 0,
+            "stdout": '[{"LocalAddress":"0.0.0.0","LocalPort":80,"OwningProcess":4,"Process":"System"}]',
+            "stderr": ""
+        }
+        mock_prober_cls.return_value = mock_instance
 
         def call_side_effect(method, params=None, auth_required=True):
-            if method == "script.get":
-                return [{"scriptid": "77", "name": "JASS - Listening TCP Ports", "command": "powershell ..."}]
-            if method == "script.execute":
-                return {"value": "[]"}
+            if method == "hostinterface.get":
+                return [{"ip": "10.0.0.1"}]
             return []
 
         self.mock_client.call.side_effect = call_side_effect
@@ -252,8 +260,8 @@ class TestWindowsSniffer(unittest.TestCase):
 
         self.assertIsNotNone(result)
         self.assertTrue(result.success)
-        create_calls = [c for c in self.mock_client.call.call_args_list if c.args[0] == "script.create"]
-        self.assertEqual(len(create_calls), 0)
+        self.assertEqual(len(result.parsed_listening_ports), 1)
+        self.assertEqual(result.parsed_listening_ports[0]["port"], 80)
 
     def test_full_analysis_and_llm_prompt_generation(self):
         host_raw = {

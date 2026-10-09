@@ -7,15 +7,18 @@ from __future__ import annotations
 
 import logging
 import os
+from dotenv import load_dotenv
+load_dotenv(override=True)
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, Depends
+from jass.ui.routers_zabbix_scripts import router as zabbix_scripts_router
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from jass.db.database import init_db, SessionLocal
-from jass.db.models import HostTelemetry, HostDiscovery
+from jass.db.database import init_db, SessionLocal, get_db
+from sqlalchemy.orm import Session
 import json
 
 from pydantic import BaseModel
@@ -34,10 +37,32 @@ app = FastAPI(
     version="1.0.0",
 )
 
+app.include_router(zabbix_scripts_router)
+
+from jass.db.seeds import seed_db
+
 @app.on_event("startup")
 def on_startup():
     init_db()
+    seed_db()
+    
+    from jass.core.settings import get_setting
+    state["zabbix_url"] = get_setting("ZABBIX_URL", "")
+    state["api_token"] = get_setting("ZABBIX_API_TOKEN", "")
+    state["username"] = get_setting("ZABBIX_USER", "")
+    state["password"] = get_setting("ZABBIX_PASSWORD", "")
+    state["verify_ssl"] = get_setting("ZABBIX_VERIFY_SSL", "true").lower() == "true"
+    
+    # Setup logging level
+    import logging
+    log_level = get_setting("LOG_LEVEL", "INFO").upper()
+    numeric_level = getattr(logging, log_level, logging.INFO)
+    logging.getLogger().setLevel(numeric_level)
+    logging.getLogger("jass").setLevel(numeric_level)
 
+
+
+from fastapi.staticfiles import StaticFiles
 
 app.add_middleware(
     CORSMiddleware,
@@ -47,16 +72,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Mount static directory for prober.exe downloads
+static_dir = Path(__file__).parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+from jass.ui.routers import prober, admin, host_properties
+app.include_router(prober.router)
+app.include_router(admin.router)
+app.include_router(host_properties.router)
+
 # Global session state and cache
 state: Dict[str, Any] = {
     "analyzer": None,
-    "zabbix_url": os.getenv("ZABBIX_URL", ""),
-    "api_token": os.getenv("ZABBIX_API_TOKEN") or os.getenv("ZABBIX_TOKEN", ""),
-    "username": os.getenv("ZABBIX_USER") or os.getenv("ZABBIX_USERNAME", ""),
-    "password": os.getenv("ZABBIX_PASSWORD", ""),
+    "zabbix_url": "",
+    "api_token": "",
+    "username": "",
+    "password": "",
     "verify_ssl": True,
-    "cached_payloads": {},  # host_id -> HostAnalysisPayload
-}
+    "cached_payloads": {},
+}  # host_id -> HostAnalysisPayload
 
 
 class ConnectRequest(BaseModel):
@@ -72,6 +107,7 @@ class AnalyzeHostRequest(BaseModel):
     run_remote_probe: bool = False
     script_name: Optional[str] = None
     probe_key: Optional[str] = None
+    zscript_id: Optional[int] = None
 
 
 class SavePayloadRequest(BaseModel):
@@ -106,7 +142,7 @@ def get_or_create_analyzer() -> ZabbixAnalyzer:
 
 
 @app.get("/api/status")
-async def api_status():
+def api_status():
     """Returns Zabbix API connection status."""
     connected = False
     version = None
@@ -137,7 +173,7 @@ async def api_status():
 
 
 @app.post("/api/connect")
-async def api_connect(req: ConnectRequest):
+def api_connect(req: ConnectRequest):
     """Configures and tests Zabbix API connection."""
     state["zabbix_url"] = req.url
     state["api_token"] = req.token or ""
@@ -159,22 +195,67 @@ async def api_connect(req: ConnectRequest):
 
 
 @app.get("/api/groups")
-async def api_groups():
-    """Retrieves list of host groups."""
+def api_groups(db: Session = Depends(get_db)):
+    """Retrieves list of host groups from DB, filtered by Zabbix Host Groups setting."""
+    from jass.db.models import ZabbixHostGroup, SystemSetting
+    groups = db.query(ZabbixHostGroup).all()
+    
+    setting = db.query(SystemSetting).filter_by(key="zabbix_host_groups").first()
+    if setting and setting.value:
+        allowed = {g.strip() for g in setting.value.split(",") if g.strip()}
+        if allowed:
+            groups = [g for g in groups if g.groupid in allowed]
+            
+    return {"groups": [{"groupid": g.groupid, "name": g.name} for g in groups]}
+
+@app.get("/api/admin/groups")
+def api_admin_groups(db: Session = Depends(get_db)):
+    """Retrieves ALL host groups from DB for the admin panel settings."""
+    from jass.db.models import ZabbixHostGroup
+    groups = db.query(ZabbixHostGroup).all()
+    return {"groups": [{"groupid": g.groupid, "name": g.name} for g in groups]}
+
+@app.post("/api/admin/sync-groups")
+def sync_groups(db: Session = Depends(get_db)):
+    """Syncs host groups from Zabbix API to DB."""
+    from jass.db.models import ZabbixHostGroup
     analyzer = get_or_create_analyzer()
     try:
         groups = analyzer.list_hostgroups()
-        return {"groups": groups}
+        # Upsert
+        existing = {g.groupid: g for g in db.query(ZabbixHostGroup).all()}
+        for g in groups:
+            if g["groupid"] in existing:
+                existing[g["groupid"]].name = g["name"]
+            else:
+                db.add(ZabbixHostGroup(groupid=g["groupid"], name=g["name"]))
+        db.commit()
+        return {"status": "ok", "count": len(groups)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @app.get("/api/hosts")
-async def api_hosts(group_id: Optional[str] = None, search: Optional[str] = None):
+def api_hosts(group_id: Optional[str] = None, search: Optional[str] = None):
     """Retrieves list of hosts."""
+    from jass.db.database import SessionLocal
+    from jass.db.models import SystemSetting
+    
     analyzer = get_or_create_analyzer()
     try:
-        group_ids = [group_id] if group_id else None
+        if group_id:
+            group_ids = [group_id]
+        else:
+            db = SessionLocal()
+            try:
+                setting = db.query(SystemSetting).filter_by(key="zabbix_host_groups").first()
+                if setting and setting.value:
+                    group_ids = [g.strip() for g in setting.value.split(",") if g.strip()]
+                else:
+                    group_ids = None
+            finally:
+                db.close()
+                
         hosts = analyzer.list_hosts(group_ids=group_ids, search=search)
         return {"hosts": hosts}
     except Exception as e:
@@ -182,13 +263,13 @@ async def api_hosts(group_id: Optional[str] = None, search: Optional[str] = None
 
 
 @app.get("/api/probes")
-async def api_probes():
+def api_probes():
     """Lists built-in remote probes available in the JASS probe catalog."""
     return {"probes": ZabbixAnalyzer.list_available_probes()}
 
 
 @app.post("/api/analyze/host")
-async def api_analyze_host(req: AnalyzeHostRequest):
+def api_analyze_host(req: AnalyzeHostRequest):
     """Performs host telemetry analysis and returns JSON payload."""
     analyzer = get_or_create_analyzer()
     try:
@@ -199,32 +280,7 @@ async def api_analyze_host(req: AnalyzeHostRequest):
             probe_key=req.probe_key,
         )
 
-        # Update cache in DB
-        db = SessionLocal()
-        try:
-            telemetry = db.query(HostTelemetry).filter(HostTelemetry.host_id == payload.host_id).first()
-            if not telemetry:
-                telemetry = HostTelemetry(host_id=payload.host_id, host_name=payload.host_name)
-                db.add(telemetry)
-            
-            # Store payload dict
-            telemetry.payload = payload.model_dump()
-            db.commit()
-            
-            # If there was a probe execution, save it to history
-            if payload.remote_execution and payload.remote_execution.success:
-                disc = HostDiscovery(
-                    host_id=payload.host_id,
-                    probe_key=payload.remote_execution.probe_key,
-                    data=payload.remote_execution.parsed_data
-                )
-                db.add(disc)
-                db.commit()
-        except Exception as e:
-            db.rollback()
-            logger.error(f"DB save error: {e}")
-        finally:
-            db.close()
+
         return {
             "success": True,
             "payload": payload.model_dump(),
@@ -236,8 +292,41 @@ async def api_analyze_host(req: AnalyzeHostRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.get("/api/export-json/{host_id}")
+def api_export_json(host_id: str):
+    """Exports all host properties as a unified JSON structure."""
+    from jass.db.database import SessionLocal
+    from jass.db.models import HostPropertyValue, HostProperty
+    
+    analyzer = get_or_create_analyzer()
+    try:
+        hosts = analyzer.list_hosts(search=host_id)
+        if not hosts:
+            db_host_id = host_id
+        else:
+            db_host_id = hosts[0].get("hostid", host_id)
+            
+        db = SessionLocal()
+        try:
+            props = db.query(HostProperty).all()
+            prop_map = {p.id: p.name for p in props}
+            
+            values = db.query(HostPropertyValue).filter_by(host_id=str(db_host_id)).all()
+            
+            export_data = {"host_id": str(db_host_id), "host_name_query": host_id}
+            for v in values:
+                p_name = prop_map.get(v.property_id)
+                if p_name:
+                    export_data[p_name] = v.value
+                    
+            return export_data
+        finally:
+            db.close()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/api/save")
-async def api_save_payload(req: SavePayloadRequest):
+def api_save_payload(req: SavePayloadRequest):
     """Saves analysis payload as [host_name]_analysis.json."""
     try:
         pydantic_payload = HostAnalysisPayload(**req.payload)
@@ -248,12 +337,20 @@ async def api_save_payload(req: SavePayloadRequest):
 
 
 @app.get("/", response_class=HTMLResponse)
-async def get_index():
+def get_index():
     """Serves the main Web Dashboard interface."""
     template_path = Path(__file__).parent / "templates" / "index.html"
     if template_path.exists():
         return HTMLResponse(content=template_path.read_text(encoding="utf-8"))
     return HTMLResponse(content="<h1>JASS UI Template Not Found</h1>", status_code=404)
+
+@app.get("/admin", response_class=HTMLResponse)
+def get_admin():
+    """Serves the Admin Configuration interface."""
+    template_path = Path(__file__).parent / "templates" / "admin.html"
+    if template_path.exists():
+        return HTMLResponse(content=template_path.read_text(encoding="utf-8"))
+    return HTMLResponse(content="<h1>JASS Admin Template Not Found</h1>", status_code=404)
 
 
 def start_ui_server(
@@ -277,3 +374,4 @@ def start_ui_server(
     state["verify_ssl"] = verify_ssl
 
     uvicorn.run(app, host=host, port=port, log_level="info")
+
